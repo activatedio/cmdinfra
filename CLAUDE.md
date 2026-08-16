@@ -27,6 +27,7 @@ genlib/           # build-time code generation (panics on error)
     registry.go   # NewRegistry(), Spec + FileMain + EntityFileMain handlers, index
     root.go       # NewRootCommand emitter
     command.go    # per-entity emitters: group, verbs, client adapter, resolver, flags
+    association.go # association edges: reflect analysis + add-*/remove-*/list-* verbs
 pkg/              # runtime imported by generated code (returns errors)
   cmd/
     execute.go    # Execute: run the root, print the error, return the exit code
@@ -127,18 +128,24 @@ bool/int/float, string otherwise; enum completion values), the flag→field
 map, and the masked-fields list; plus `index_cmd_gen.go` with
 `Commands(deps)` returning the sorted service groups. Completion: enum
 flags and resource-name positional args (List under the resolved parent).
-`examples/petstore` is the full golden CLI, acceptance-tested end to end
-(real cobra parsing, real gRPC wire, in-process fake): lifecycle,
+Association verbs — each `Associate` marker (several per entity is fine)
+reflect-validates its kit-shaped `Associate{Targets}To{Entity}` /
+`List{Targets}By{Entity}` RPC pair (the edge payload is located by its
+set/remove fields, Go names from protoc-gen-go tags) and emits an
+`Associator` factory plus `add-<noun>`/`remove-<noun>`/`list-<noun>`
+verbs. `examples/petstore` is the full golden CLI, acceptance-tested end
+to end (real cobra parsing, real gRPC wire, in-process fake): lifecycle,
 context-fallback list, actionable missing-scope error, masked describe,
-$EDITOR edit with a minimal patch mask, name + enum completion.
+$EDITOR edit with a minimal patch mask, name + enum completion, and the
+association add/list/remove flow.
 
 Pending (tracked in the awctl plan, gitlab project `authwise/awctl`):
-association verbs (`add-*`/`remove-*` — the Associate marker panics until
-then; needs an association RPC in the petstore example proto to golden-
-test), Search verbs, sensitive-flag prompting (sensitive fields currently
-get normal flags and masked output; interactive prompting is an awctl UX
-decision), auth (`api-client-go/credentials/bearer`), and the awctl
-rewrite itself.
+Search verb generation (the `Searcher` runtime adapter exists; the verb
+generator lands with the awctl rewrite, where kit's SearchEvents shape is
+concrete — the marker panics until then), sensitive-flag prompting
+(sensitive fields currently get normal flags and masked output;
+interactive prompting is an awctl UX decision), auth
+(`api-client-go/credentials/bearer`), and the awctl rewrite itself.
 
 ## Working in this repo
 
