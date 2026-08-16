@@ -29,6 +29,11 @@ genlib/           # build-time code generation (panics on error)
 pkg/              # runtime imported by generated code (returns errors)
   cmd/
     execute.go    # Execute: run the root, print the error, return the exit code
+    types.go      # Record/StringsRecord/FieldList, params, service interfaces
+    record.go     # ToRecord(protojson), ApplyRecord (record -> proto), DecodeEntity (--file)
+    crud.go       # Crud[E]: generic CrudService over CrudClient[E] closures
+    search.go     # Searcher[E]: SearchService over a Search closure
+    associate.go  # Associator[T]: AssociateService over Associate/ListBy closures
 examples/greet    # end-to-end example; generated/ is the golden output contract
   gen/main.go     # generator entry point (//go:generate go run .)
   generated/      # generated golden output
@@ -87,13 +92,24 @@ over the shared Entry pattern (`Resource{Scope, Ops, Group, Plural}`,
 values, auto-JSON messages, name-is-positional), verb derivation
 (`VerbsFor`: Patch-first update/edit, edit requires Get), column defaults
 (`ColumnsFor`), command path (`CommandPath`). See the README "Spec model"
-section for worked examples per scope depth.
+section for worked examples per scope depth. Generic AIP service adapter —
+awctl's service interface shapes (`GetService`, `ListService`,
+`CreateService[E]`, `UpdateService[E]`, `DeleteService`, `SearchService`,
+plus `AssociateService`) implemented once: `Crud[E]` over `CrudClient[E]`
+closures (record-based create/patch via `ApplyRecord` protoreflect
+conversion; the record's sorted keys are the update mask; `--file`
+create/update via `DecodeEntity` yaml/json→protojson; List walks
+`next_page_token`), `Searcher[E]`, `Associator[T]` over
+`AssociationRequest{set, remove}` + `List*By*`. Records render via
+protojson (`UseProtoNames`, `EmitDefaultValues`). Tested against an
+in-process petstore gRPC service (real wire, real client).
 
-Pending (tracked in the awctl plan, gitlab project `authwise/awctl`): the
-generic AIP service adapter, context and named-context handling
-(`--tenant-id` etc. with gcloud-style config), output rendering + editor
-verbs, the command generators (declaring spec entries panics until then),
-auth (`api-client-go/credentials/bearer`), and the awctl rewrite itself.
+Pending (tracked in the awctl plan, gitlab project `authwise/awctl`):
+context and named-context handling (`--tenant-id` etc. with gcloud-style
+config), output rendering + editor verbs, the command generators (declaring
+spec entries panics until then; they will emit the CrudClient closures from
+ClientType reflect analysis like tfinfra), auth
+(`api-client-go/credentials/bearer`), and the awctl rewrite itself.
 
 ## Working in this repo
 
