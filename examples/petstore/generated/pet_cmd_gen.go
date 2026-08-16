@@ -24,6 +24,9 @@ func NewPetCommand(deps *cmd.Deps) *cobra.Command {
 	group.AddCommand(newPetEditCommand(deps))
 	group.AddCommand(newPetListCommand(deps))
 	group.AddCommand(newPetUpdateCommand(deps))
+	group.AddCommand(newPetAddToysCommand(deps))
+	group.AddCommand(newPetRemoveToysCommand(deps))
+	group.AddCommand(newPetListToysCommand(deps))
 	return group
 }
 func newPetClient(ctx context.Context, deps *cmd.Deps) (v1.PetStoreServiceClient, error) {
@@ -304,5 +307,94 @@ func newPetUpdateCommand(deps *cmd.Deps) *cobra.Command {
 			return newPetService(client), r, nil
 		})
 	}
+	return c
+}
+func newPetToysAssociator(client v1.PetStoreServiceClient) *cmd.Associator[*v1.Toy] {
+	return cmd.NewAssociator(cmd.AssociateParams[*v1.Toy]{
+		Client: cmd.AssociateClient[*v1.Toy]{
+			Associate: func(ctx context.Context, name string, set, remove []string) error {
+				_, err := client.AssociateToysToPet(ctx, &v1.AssociateToysToPetRequest{
+					Association: &v1.AssociationRequest{
+						Remove: remove,
+						Set:    set,
+					},
+					Name: name,
+				})
+				return err
+			},
+			ListBy: func(ctx context.Context, name string, pageToken string) ([]*v1.Toy, string, error) {
+				res, err := client.ListToysByPet(ctx, &v1.ListToysByPetRequest{
+					Name:      name,
+					PageToken: pageToken,
+				})
+				if err != nil {
+					return nil, "", err
+				}
+				return res.Toys, res.NextPageToken, nil
+			},
+		},
+		Columns: cmd.FieldList{"name", "display_name"},
+		Name:    "pet toys",
+	})
+}
+func newPetAddToysCommand(deps *cmd.Deps) *cobra.Command {
+	c := &cobra.Command{
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cc *cobra.Command, args []string) error {
+			client, err := newPetClient(cc.Context(), deps)
+			if err != nil {
+				return err
+			}
+			r, err := petResolver(cc, deps)
+			if err != nil {
+				return err
+			}
+			return cmd.RunAssociate(cc, newPetToysAssociator(client), r, "pets", args, false)
+		},
+		Short: "Add toys to a pet",
+		Use:   "add-toys <pet> <target>...",
+	}
+	addPetScopeFlags(c)
+	return c
+}
+func newPetRemoveToysCommand(deps *cmd.Deps) *cobra.Command {
+	c := &cobra.Command{
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cc *cobra.Command, args []string) error {
+			client, err := newPetClient(cc.Context(), deps)
+			if err != nil {
+				return err
+			}
+			r, err := petResolver(cc, deps)
+			if err != nil {
+				return err
+			}
+			return cmd.RunAssociate(cc, newPetToysAssociator(client), r, "pets", args, true)
+		},
+		Short: "Remove toys from a pet",
+		Use:   "remove-toys <pet> <target>...",
+	}
+	addPetScopeFlags(c)
+	return c
+}
+func newPetListToysCommand(deps *cmd.Deps) *cobra.Command {
+	c := &cobra.Command{
+		Args: cobra.ExactArgs(1),
+		RunE: func(cc *cobra.Command, args []string) error {
+			client, err := newPetClient(cc.Context(), deps)
+			if err != nil {
+				return err
+			}
+			r, err := petResolver(cc, deps)
+			if err != nil {
+				return err
+			}
+			return cmd.RunListAssociated(cc, newPetToysAssociator(client), r, "pets", args[0])
+		},
+		Short: "List a pet's toys",
+		Use:   "list-toys <pet>",
+	}
+	addPetScopeFlags(c)
+	cmd.AddOutputFlags(c)
 	return c
 }

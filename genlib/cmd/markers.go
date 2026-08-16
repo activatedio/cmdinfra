@@ -66,10 +66,9 @@ type FieldFlags struct {
 // Associate declares association verbs for the entry — the CLI surface of
 // the AIP Associate*/List*By* RPC family:
 //
-//	awctl identity users add-roles <user> --roles=...
-//	awctl identity users remove-roles <user> --roles=...
-//
-// PENDING: declaring it panics until the command generators land.
+//	awctl identity users add-roles <user> <role>...
+//	awctl identity users remove-roles <user> <role>...
+//	awctl identity users list-roles <user>
 type Associate struct {
 	// Target is the associated pb entity type, e.g.
 	// reflect.TypeFor[identitypb.Role]().

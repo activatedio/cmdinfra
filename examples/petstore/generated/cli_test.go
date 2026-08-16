@@ -34,6 +34,7 @@ type fakePetStore struct {
 
 	mu            sync.Mutex
 	pets          map[string]*petstorev1.Pet
+	toys          map[string][]string
 	seq           int
 	lastPatchMask []string
 }
@@ -117,6 +118,41 @@ func (f *fakePetStore) DeletePet(_ context.Context, in *petstorev1.DeletePetRequ
 	return &emptypb.Empty{}, nil
 }
 
+func (f *fakePetStore) AssociateToysToPet(_ context.Context, in *petstorev1.AssociateToysToPetRequest) (*emptypb.Empty, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.pets[in.GetName()]; !ok {
+		return nil, status.Errorf(codes.NotFound, "pet %q not found", in.GetName())
+	}
+	current := map[string]bool{}
+	for _, t := range f.toys[in.GetName()] {
+		current[t] = true
+	}
+	for _, t := range in.GetAssociation().GetSet() {
+		current[t] = true
+	}
+	for _, t := range in.GetAssociation().GetRemove() {
+		delete(current, t)
+	}
+	names := make([]string, 0, len(current))
+	for t := range current {
+		names = append(names, t)
+	}
+	sort.Strings(names)
+	f.toys[in.GetName()] = names
+	return &emptypb.Empty{}, nil
+}
+
+func (f *fakePetStore) ListToysByPet(_ context.Context, in *petstorev1.ListToysByPetRequest) (*petstorev1.ListToysByPetResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	res := &petstorev1.ListToysByPetResponse{}
+	for _, name := range f.toys[in.GetName()] {
+		res.Toys = append(res.Toys, &petstorev1.Toy{Name: name, DisplayName: "Toy " + name})
+	}
+	return res, nil
+}
+
 // harness boots the fake service and returns a CLI runner plus the fake for
 // server-side assertions.
 type harness struct {
@@ -128,7 +164,7 @@ func newHarness(t *testing.T) *harness {
 
 	t.Helper()
 
-	fake := &fakePetStore{pets: map[string]*petstorev1.Pet{}}
+	fake := &fakePetStore{pets: map[string]*petstorev1.Pet{}, toys: map[string][]string{}}
 
 	lis, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -319,4 +355,26 @@ func TestCLI_EnumFlagCompletion(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, out, "PET_TYPE_DOG")
 	assert.Contains(t, out, "PET_TYPE_CAT")
+}
+
+func TestCLI_Associations(t *testing.T) {
+
+	h := newHarness(t)
+
+	_, err := h.run(t, "petstore", "pets", "create", "--store-id", "s-1", "--display-name", "Rex")
+	require.NoError(t, err)
+
+	out, err := h.run(t, "petstore", "pets", "add-toys", "p-1", "--store-id", "s-1", "toys/ball", "toys/rope")
+	require.NoError(t, err)
+	assert.Equal(t, "Updated stores/s-1/pets/p-1\n", out)
+	assert.Equal(t, []string{"toys/ball", "toys/rope"}, h.fake.toys["stores/s-1/pets/p-1"])
+
+	out, err = h.run(t, "petstore", "pets", "list-toys", "p-1", "--store-id", "s-1")
+	require.NoError(t, err)
+	assert.Contains(t, out, "toys/ball")
+	assert.Contains(t, out, "Toy toys/rope")
+
+	_, err = h.run(t, "petstore", "pets", "remove-toys", "stores/s-1/pets/p-1", "toys/ball")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"toys/rope"}, h.fake.toys["stores/s-1/pets/p-1"])
 }

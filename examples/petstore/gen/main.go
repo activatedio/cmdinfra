@@ -39,6 +39,7 @@ func main() {
 					},
 					gencmd.Columns{Default: []string{"name", "display_name", "type"}},
 					gencmd.FieldFlags{Sensitive: []string{"metadata"}},
+					gencmd.Associate{Target: reflect.TypeFor[petstorev1.Toy]()},
 				},
 			},
 		},

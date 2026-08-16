@@ -285,6 +285,50 @@ func RunDelete(c *cobra.Command, svc DeleteService, r Resolver, collection, arg 
 	return err
 }
 
+// RunAssociate adds or removes association targets: args[0] is the entity
+// (short ID or full name), the rest are the targets, passed verbatim.
+func RunAssociate(c *cobra.Command, svc AssociateService, r Resolver, collection string, args []string, remove bool) error {
+
+	name, err := r.Name(collection, args[0])
+	if err != nil {
+		return err
+	}
+
+	targets := args[1:]
+	if remove {
+		err = svc.Remove(c.Context(), name, targets)
+	} else {
+		err = svc.Add(c.Context(), name, targets)
+	}
+	if err != nil {
+		return err
+	}
+
+	_, err = fmt.Fprintf(c.OutOrStdout(), "Updated %s\n", name)
+	return err
+}
+
+// RunListAssociated lists the entities associated with args[0] and renders
+// them.
+func RunListAssociated(c *cobra.Command, svc AssociateService, r Resolver, collection, arg string) error {
+
+	name, err := r.Name(collection, arg)
+	if err != nil {
+		return err
+	}
+
+	records, err := svc.ListAssociated(c.Context(), name)
+	if err != nil {
+		return err
+	}
+
+	renderer, fields, err := renderParamsFrom(c, svc, nil)
+	if err != nil {
+		return err
+	}
+	return renderer.RenderList(records, fields, c.OutOrStdout())
+}
+
 // CompleteNames is the positional-argument completion for verbs taking a
 // resource name: it lists under the context-resolved parent and offers the
 // full names. Errors mean no completions, never a broken shell.

@@ -68,7 +68,12 @@ func writeEntityCommand(f *jen.File, e gentf.Entry, res Resource) {
 	verbs := VerbsFor(res.Ops)
 	cm := gentf.AnalyzeClient(e, gentf.Resource{ClientType: res.ClientType, Ops: res.Ops})
 
-	writeGroupCommand(f, n, verbs)
+	models := make([]associationModel, 0, len(associations(e)))
+	for _, a := range associations(e) {
+		models = append(models, analyzeAssociation(e, res, a))
+	}
+
+	writeGroupCommand(f, n, verbs, models)
 	writeClientFunc(f, n, res)
 	writeServiceFactory(f, n, cm, columns)
 	writeResolver(f, n, res)
@@ -78,16 +83,27 @@ func writeEntityCommand(f *jen.File, e gentf.Entry, res Resource) {
 	for _, v := range verbs {
 		writeVerbCommand(f, n, v)
 	}
+
+	for _, am := range models {
+		writeAssociation(f, n, res, am)
+	}
 }
 
 // writeGroupCommand emits New<Entity>Command: the resource-plural group.
-func writeGroupCommand(f *jen.File, n entityNames, verbs []Verb) {
+func writeGroupCommand(f *jen.File, n entityNames, verbs []Verb, models []associationModel) {
 
-	adds := make([]jen.Code, 0, len(verbs))
+	adds := make([]jen.Code, 0, len(verbs)+3*len(models))
 	for _, v := range verbs {
 		adds = append(adds, jen.Id("group").Dot("AddCommand").Call(
 			jen.Id(verbFuncName(n, v)).Call(jen.Id("deps")),
 		))
+	}
+	for _, am := range models {
+		for _, verb := range []string{verbAdd, verbRemove, verbList} {
+			adds = append(adds, jen.Id("group").Dot("AddCommand").Call(
+				jen.Id(associationVerbFuncName(n, am, verb)).Call(jen.Id("deps")),
+			))
+		}
 	}
 
 	f.Commentf("New%sCommand returns the %q resource command group.", n.Entity, n.PluralCmd)

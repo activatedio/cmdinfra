@@ -87,9 +87,6 @@ func validateEntry(e gentf.Entry) {
 	if !gentf.HasImplementation[Resource](e) {
 		panic(fmt.Sprintf("%s: entry declares no cmd.Resource", name))
 	}
-	if gentf.HasImplementation[Associate](e) {
-		panic(fmt.Sprintf("%s: Associate verbs are not yet supported", name))
-	}
 	if gentf.HasImplementation[Search](e) {
 		panic(fmt.Sprintf("%s: Search verbs are not yet supported", name))
 	}
