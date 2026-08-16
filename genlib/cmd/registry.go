@@ -52,6 +52,9 @@ func validateSpec(spec *Spec) {
 	if spec.Root.Use == "" {
 		panic("cmdinfra: Spec.Root.Use must be set")
 	}
+	if len(spec.Entries) > 0 {
+		panic("cmdinfra: command generation for spec entries is not yet implemented (pending the command-generators task)")
+	}
 }
 
 // fileMainHandler composes the sections of the root file.

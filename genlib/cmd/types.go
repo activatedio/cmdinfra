@@ -1,14 +1,25 @@
 package cmd
 
-// Spec is the root input to generation: one CLI surface. The bootstrap
-// shape carries only the root command; the spec model task grows it to
-// services (identity, guard, access), resources, and verbs mirroring the
-// gcloud command shape.
+import (
+	gentf "github.com/activatedio/tfinfra/genlib/tf"
+)
+
+// Spec is the root input to generation: one CLI surface over an AIP-shaped
+// gRPC API, mirroring the gcloud command shape
+// (<root> <service> <resource-plural> <verb>).
 type Spec struct {
 	// Package is the Go package name of the generated files.
 	Package string
 	// Root describes the generated CLI's root command.
 	Root Root
+	// Entries describe the API resources, one per pb message type, reusing
+	// tfinfra's Entry so a surface can eventually be declared once and
+	// shared between the CLI and Terraform specs. Implementations carry the
+	// CLI markers (Resource, Columns, FieldFlags, Associate, Search).
+	//
+	// PENDING: the command generators are not yet implemented — declaring
+	// entries panics.
+	Entries []gentf.Entry
 }
 
 // Root declares the root command of the generated CLI.

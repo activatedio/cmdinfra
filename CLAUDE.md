@@ -18,7 +18,12 @@ same `github.com/activatedio/gen` registry. The first consumer is `awctl`.
 ```
 genlib/           # build-time code generation (panics on error)
   cmd/
-    types.go      # Spec, Root (bootstrap shape; the spec model task grows it)
+    types.go      # Spec{Package, Root, Entries []gentf.Entry}
+    markers.go    # Resource, Columns, FieldFlags, Associate (pending), Search (pending)
+    flags.go      # Flag + NormalizeFlags: tfinfra field normalization -> kebab flags
+    verbs.go      # Verb + VerbsFor: Ops -> create/delete/describe/edit/list/update
+    columns.go    # ColumnsFor: Columns marker validated, name+display_name default
+    names.go      # CommandPath: group + derived kebab plural
     registry.go   # NewRegistry(), Spec directory handler, FileMain file handler
     root.go       # NewRootCommand emitter
 pkg/              # runtime imported by generated code (returns errors)
@@ -29,6 +34,20 @@ examples/greet    # end-to-end example; generated/ is the golden output contract
   generated/      # generated golden output
   main.go         # consumer main: generated root + hand-written subcommand
 ```
+
+## Shared vocabulary with tfinfra
+
+The spec model deliberately reuses tfinfra rather than redefining:
+`gentf.Entry` + `Get/HasImplementation`, `gentf.Ops`, `gentf.Field`/
+`FieldKind` (via `gentf.NormalizeFields` — cmdinfra auto-marks all
+message-typed fields JSON, the CLI's protojson string lane), and
+`pkg/tf.Scope` for AIP hierarchy semantics. All of that is
+**generation-time only** today. Before generated runtime code needs scope
+composition (the service adapter / command generators), Scope must move to
+a framework-free home — a CLI binary must not link the Terraform plugin
+framework; the plan is a tfinfra `pkg/aip` extraction with a
+`type Scope = aip.Scope` alias (no consumer breakage), unless the parity
+task decides a shared module first.
 
 ## The genlib/pkg decision rule
 
@@ -61,14 +80,20 @@ github.com/activatedio/cmdinfra. DO NOT EDIT.` header (`golangci-lint`'s
 Implemented: repo bootstrap — gen registry plumbing (`Spec` directory
 handler + `FileMain` file handler), root command emitter, `pkg/cmd.Execute`
 runtime, greet example as the golden output contract, CI (mod-tidy diff,
-lint, unit tests, byte-identical regeneration).
+lint, unit tests, byte-identical regeneration). Spec model — CLI markers
+over the shared Entry pattern (`Resource{Scope, Ops, Group, Plural}`,
+`Columns`, `FieldFlags{Exclude, Rename, Sensitive}`, pending `Associate`/
+`Search`), flag derivation (`NormalizeFlags`: kebab names, enum completion
+values, auto-JSON messages, name-is-positional), verb derivation
+(`VerbsFor`: Patch-first update/edit, edit requires Get), column defaults
+(`ColumnsFor`), command path (`CommandPath`). See the README "Spec model"
+section for worked examples per scope depth.
 
 Pending (tracked in the awctl plan, gitlab project `authwise/awctl`): the
-spec model over published pb types (services/resources/verbs), the generic
-AIP service adapter, context and named-context handling (`--tenant-id` etc.
-with gcloud-style config), output rendering + editor verbs, the command
-generators, auth (`api-client-go/credentials/bearer`), and the awctl
-rewrite itself.
+generic AIP service adapter, context and named-context handling
+(`--tenant-id` etc. with gcloud-style config), output rendering + editor
+verbs, the command generators (declaring spec entries panics until then),
+auth (`api-client-go/credentials/bearer`), and the awctl rewrite itself.
 
 ## Working in this repo
 
