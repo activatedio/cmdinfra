@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/activatedio/gen v0.2.0
-	github.com/activatedio/tfinfra v0.0.4
+	github.com/activatedio/tfinfra v0.0.5
 	github.com/dave/jennifer v1.7.1
 	github.com/gertd/go-pluralize v0.2.1
 	github.com/spf13/cobra v1.10.2
