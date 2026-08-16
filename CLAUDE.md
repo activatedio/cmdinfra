@@ -34,6 +34,10 @@ pkg/              # runtime imported by generated code (returns errors)
     crud.go       # Crud[E]: generic CrudService over CrudClient[E] closures
     search.go     # Searcher[E]: SearchService over a Search closure
     associate.go  # Associator[T]: AssociateService over Associate/ListBy closures
+    scope.go      # Resolver: flag > context > error; short-id/full-name args
+    context.go    # ContextFile/ContextStore: named contexts (~/.awctl.yaml)
+    render.go     # table/yaml/json renderers, dotted paths, sensitive masking
+    editor.go     # Edit[E]: $EDITOR patch-diff flow; FieldDiff update masks
 examples/greet    # end-to-end example; generated/ is the golden output contract
   gen/main.go     # generator entry point (//go:generate go run .)
   generated/      # generated golden output
@@ -102,14 +106,23 @@ create/update via `DecodeEntity` yaml/json→protojson; List walks
 `next_page_token`), `Searcher[E]`, `Associator[T]` over
 `AssociationRequest{set, remove}` + `List*By*`. Records render via
 protojson (`UseProtoNames`, `EmitDefaultValues`). Tested against an
-in-process petstore gRPC service (real wire, real client).
+in-process petstore gRPC service (real wire, real client). Context
+resolution — `Resolver` (explicit flag > active context > actionable
+error; positional args take a short ID or a validated full AIP name;
+`ParseBack` fills identifiers) and `ContextFile`/`ContextStore` (named
+contexts, the gcloud-configurations analog; 0600). Output + editor —
+table/yaml/json renderers (`NewRenderer`; dotted field paths; sensitive
+fields mask as ******** in tables, machine formats print everything for
+piping), and `Edit[E]`: the $EDITOR patch-diff flow (yaml temp file →
+editor → decode → `FieldDiff` update mask of exactly what changed; `name`
+never masks in).
 
-Pending (tracked in the awctl plan, gitlab project `authwise/awctl`):
-context and named-context handling (`--tenant-id` etc. with gcloud-style
-config), output rendering + editor verbs, the command generators (declaring
-spec entries panics until then; they will emit the CrudClient closures from
-ClientType reflect analysis like tfinfra), auth
-(`api-client-go/credentials/bearer`), and the awctl rewrite itself.
+Pending (tracked in the awctl plan, gitlab project `authwise/awctl`): the
+command generators (declaring spec entries panics until then; they will
+emit the CrudClient closures from ClientType reflect analysis like tfinfra
+and wire scope flags to Resolver, Columns to renderers, Sensitive to
+masking and prompts), auth (`api-client-go/credentials/bearer`), and the
+awctl rewrite itself.
 
 ## Working in this repo
 
