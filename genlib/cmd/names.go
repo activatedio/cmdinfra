@@ -45,3 +45,26 @@ func kebabFromCamel(s string) string {
 	}
 	return b.String()
 }
+
+// snakeFromCamel converts a CamelCase entity name to snake_case for
+// generated file names.
+func snakeFromCamel(s string) string {
+	return strings.ReplaceAll(kebabFromCamel(s), "-", "_")
+}
+
+// lowerFirst lowercases the leading rune.
+func lowerFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
+}
+
+// collectionFor derives the AIP collection name: the marker override, or
+// the lower-camel plural of the entity name.
+func collectionFor(e gentf.Entry, res Resource) string {
+	if res.Collection != "" {
+		return res.Collection
+	}
+	return lowerFirst(pluralizeClient.Plural(entityType(e).Name()))
+}

@@ -1,9 +1,13 @@
 package cmd
 
 import (
+	"fmt"
 	"path/filepath"
+	"sort"
+	"strconv"
 
 	"github.com/activatedio/gen"
+	gentf "github.com/activatedio/tfinfra/genlib/tf"
 	"github.com/dave/jennifer/jen"
 )
 
@@ -19,6 +23,13 @@ type FileMain struct {
 	Spec *Spec
 }
 
+// EntityFileMain is the file-handler key for one entry's generated command
+// file — the same extension seam per entity.
+type EntityFileMain struct {
+	Spec  *Spec
+	Entry gentf.Entry
+}
+
 // NewRegistry returns a gen.Registry loaded with cmdinfra's handlers. The
 // consumer's gen/main.go typically calls
 //
@@ -27,13 +38,13 @@ func NewRegistry() gen.Registry {
 	return gen.NewRegistry().WithHandlerEntries(
 		gen.NewHandlerEntries().
 			AddDirectoryHandler(gen.NewKey[*Spec](), specDirectoryHandler).
-			AddFileHandler(gen.NewKey[*FileMain](), fileMainHandler),
+			AddFileHandler(gen.NewKey[*FileMain](), fileMainHandler).
+			AddFileHandler(gen.NewKey[*EntityFileMain](), entityFileMainHandler),
 	)
 }
 
-// specDirectoryHandler owns the target directory. The bootstrap surface is
-// a single root_gen.go; service and resource command files join it as the
-// command generators land.
+// specDirectoryHandler owns the target directory: root_gen.go, one
+// <entity>_cmd_gen.go per entry, and the service-group index.
 func specDirectoryHandler(dirPath string, r gen.Registry, entry any) {
 
 	spec := entry.(*Spec)
@@ -42,6 +53,21 @@ func specDirectoryHandler(dirPath string, r gen.Registry, entry any) {
 	gen.WithFile(spec.Package, filepath.Join(dirPath, "root_gen.go"), func(f *jen.File) {
 		r.RunFileHandler(f, &FileMain{Spec: spec})
 	}, gen.WithGeneratedBy(GeneratedBy))
+
+	for _, e := range spec.Entries {
+		validateEntry(e)
+		path := filepath.Join(dirPath, snakeFromCamel(entityType(e).Name())+"_cmd_gen.go")
+		fm := &EntityFileMain{Spec: spec, Entry: e}
+		gen.WithFile(spec.Package, path, func(f *jen.File) {
+			r.RunFileHandler(f, fm)
+		}, gen.WithGeneratedBy(GeneratedBy))
+	}
+
+	if len(spec.Entries) > 0 {
+		gen.WithFile(spec.Package, filepath.Join(dirPath, "index_cmd_gen.go"), func(f *jen.File) {
+			writeCommandIndex(f, spec)
+		}, gen.WithGeneratedBy(GeneratedBy))
+	}
 }
 
 func validateSpec(spec *Spec) {
@@ -52,8 +78,20 @@ func validateSpec(spec *Spec) {
 	if spec.Root.Use == "" {
 		panic("cmdinfra: Spec.Root.Use must be set")
 	}
-	if len(spec.Entries) > 0 {
-		panic("cmdinfra: command generation for spec entries is not yet implemented (pending the command-generators task)")
+}
+
+func validateEntry(e gentf.Entry) {
+
+	name := entityType(e).Name()
+
+	if !gentf.HasImplementation[Resource](e) {
+		panic(fmt.Sprintf("%s: entry declares no cmd.Resource", name))
+	}
+	if gentf.HasImplementation[Associate](e) {
+		panic(fmt.Sprintf("%s: Associate verbs are not yet supported", name))
+	}
+	if gentf.HasImplementation[Search](e) {
+		panic(fmt.Sprintf("%s: Search verbs are not yet supported", name))
 	}
 }
 
@@ -61,4 +99,54 @@ func validateSpec(spec *Spec) {
 func fileMainHandler(f *jen.File, _ gen.Registry, entry any) {
 	fm := entry.(*FileMain)
 	writeRoot(f, fm.Spec)
+}
+
+// entityFileMainHandler composes one entry's command file.
+func entityFileMainHandler(f *jen.File, _ gen.Registry, entry any) {
+	fm := entry.(*EntityFileMain)
+	res, _ := gentf.GetImplementation[Resource](fm.Entry)
+	writeEntityCommand(f, fm.Entry, res)
+}
+
+// writeCommandIndex emits Commands(deps): the service command groups
+// (sorted) with their resource groups attached in spec order.
+func writeCommandIndex(f *jen.File, spec *Spec) {
+
+	groups := map[string][]string{}
+	var order []string
+
+	for _, e := range spec.Entries {
+		res, _ := gentf.GetImplementation[Resource](e)
+		group, _ := CommandPath(e, res)
+		if _, ok := groups[group]; !ok {
+			order = append(order, group)
+		}
+		groups[group] = append(groups[group], entityType(e).Name())
+	}
+	sort.Strings(order)
+
+	stmts := []jen.Code{}
+	returns := make([]jen.Code, 0, len(order))
+
+	for i, group := range order {
+		id := "group" + strconv.Itoa(i)
+		stmts = append(stmts, jen.Id(id).Op(":=").Op("&").Qual(cobraPkg, "Command").Values(jen.Dict{
+			jen.Id("Use"):   jen.Lit(group),
+			jen.Id("Short"): jen.Lit("The " + group + " service"),
+		}))
+		for _, entity := range groups[group] {
+			stmts = append(stmts, jen.Id(id).Dot("AddCommand").Call(
+				jen.Id("New"+entity+"Command").Call(jen.Id("deps")),
+			))
+		}
+		returns = append(returns, jen.Id(id))
+	}
+
+	stmts = append(stmts, jen.Return(jen.Index().Op("*").Qual(cobraPkg, "Command").Values(returns...)))
+
+	f.Comment("Commands returns the service command groups to attach to the root.")
+	f.Func().Id("Commands").
+		Params(jen.Id("deps").Op("*").Qual(cmdPkg, "Deps")).
+		Index().Op("*").Qual(cobraPkg, "Command").
+		Block(stmts...)
 }

@@ -30,6 +30,17 @@ type Resource struct {
 	// Plural overrides the derived plural command group name (the kebab
 	// plural of the entity name, e.g. "appearance-profiles").
 	Plural string
+	// ClientType is the gRPC client interface carrying this resource's
+	// operations, e.g. reflect.TypeFor[identitypb.AuthwiseIdentityServiceClient]().
+	// Required.
+	ClientType reflect.Type
+	// Client is the Deps.Clients key the generated commands read the
+	// client from. Defaults to "default".
+	Client string
+	// Collection overrides the derived AIP collection name (lower-camel
+	// plural of the entity name, e.g. "appearanceProfiles") used to compose
+	// and parse resource names.
+	Collection string
 }
 
 // Columns declares the default column set for list and describe table

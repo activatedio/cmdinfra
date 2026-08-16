@@ -181,6 +181,35 @@ func (c *Crud[E]) Delete(ctx context.Context, params DeleteParams) (string, erro
 	return params.Name, nil
 }
 
+// GetEntity reads one entity as its proto type — the seam the editor flow
+// needs (records lose the typed identity).
+func (c *Crud[E]) GetEntity(ctx context.Context, name string) (E, error) {
+
+	var none E
+	if c.params.Client.Get == nil {
+		return none, c.unsupported("get")
+	}
+	return c.params.Client.Get(ctx, name)
+}
+
+// PatchEntity patches with an explicit entity and mask — the editor flow's
+// write side.
+func (c *Crud[E]) PatchEntity(ctx context.Context, name string, entity E, mask []string) (string, error) {
+
+	if c.params.Client.Patch == nil {
+		return "", c.unsupported("patch")
+	}
+
+	patched, err := c.params.Client.Patch(ctx, name, entity, mask)
+	if err != nil {
+		return "", err
+	}
+	if key := NameOf(patched); key != "" {
+		return key, nil
+	}
+	return name, nil
+}
+
 func (c *Crud[E]) unsupported(op string) error {
 	return fmt.Errorf("%s does not support %s", c.params.Name, op)
 }

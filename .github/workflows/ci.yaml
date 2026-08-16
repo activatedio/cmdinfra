@@ -50,8 +50,10 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Regenerate golden example
-        run: cd examples/greet/gen && go run .
+      - name: Regenerate golden examples
+        run: |
+          (cd examples/greet/gen && go run .)
+          (cd examples/petstore/gen && go run .)
 
       - name: Verify byte-identical regeneration
         run: git diff --exit-code

@@ -24,8 +24,9 @@ genlib/           # build-time code generation (panics on error)
     verbs.go      # Verb + VerbsFor: Ops -> create/delete/describe/edit/list/update
     columns.go    # ColumnsFor: Columns marker validated, name+display_name default
     names.go      # CommandPath: group + derived kebab plural
-    registry.go   # NewRegistry(), Spec directory handler, FileMain file handler
+    registry.go   # NewRegistry(), Spec + FileMain + EntityFileMain handlers, index
     root.go       # NewRootCommand emitter
+    command.go    # per-entity emitters: group, verbs, client adapter, resolver, flags
 pkg/              # runtime imported by generated code (returns errors)
   cmd/
     execute.go    # Execute: run the root, print the error, return the exit code
@@ -117,12 +118,27 @@ piping), and `Edit[E]`: the $EDITOR patch-diff flow (yaml temp file →
 editor → decode → `FieldDiff` update mask of exactly what changed; `name`
 never masks in).
 
-Pending (tracked in the awctl plan, gitlab project `authwise/awctl`): the
-command generators (declaring spec entries panics until then; they will
-emit the CrudClient closures from ClientType reflect analysis like tfinfra
-and wire scope flags to Resolver, Columns to renderers, Sensitive to
-masking and prompts), auth (`api-client-go/credentials/bearer`), and the
-awctl rewrite itself.
+Command generators — each entry emits `<entity>_cmd_gen.go`: the
+resource-plural group command, verb constructors delegating to the pkg/cmd
+runners, the typed-client resolver over `Deps`, the `Crud` factory with
+closures bound via tfinfra's exported `AnalyzeClient` (request shapes from
+protoc-gen-go tags), the scope-flag/resolver pair, field flags (typed for
+bool/int/float, string otherwise; enum completion values), the flag→field
+map, and the masked-fields list; plus `index_cmd_gen.go` with
+`Commands(deps)` returning the sorted service groups. Completion: enum
+flags and resource-name positional args (List under the resolved parent).
+`examples/petstore` is the full golden CLI, acceptance-tested end to end
+(real cobra parsing, real gRPC wire, in-process fake): lifecycle,
+context-fallback list, actionable missing-scope error, masked describe,
+$EDITOR edit with a minimal patch mask, name + enum completion.
+
+Pending (tracked in the awctl plan, gitlab project `authwise/awctl`):
+association verbs (`add-*`/`remove-*` — the Associate marker panics until
+then; needs an association RPC in the petstore example proto to golden-
+test), Search verbs, sensitive-flag prompting (sensitive fields currently
+get normal flags and masked output; interactive prompting is an awctl UX
+decision), auth (`api-client-go/credentials/bearer`), and the awctl
+rewrite itself.
 
 ## Working in this repo
 

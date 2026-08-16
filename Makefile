@@ -15,3 +15,4 @@ test:
 
 generate:
 	cd examples/greet/gen && go run .
+	cd examples/petstore/gen && go run .
