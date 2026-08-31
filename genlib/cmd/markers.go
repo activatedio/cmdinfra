@@ -41,6 +41,17 @@ type Resource struct {
 	// plural of the entity name, e.g. "appearanceProfiles") used to compose
 	// and parse resource names.
 	Collection string
+	// CallerNamed declares that the resource's own id comes from the caller
+	// rather than the server: the create request carries it in the entity's
+	// "name" field, and the server composes the full resource name from the
+	// parent and that id.
+	//
+	// The create verb then takes the id as its positional argument, like
+	// every other verb — `create <id>` instead of `create` — rather than
+	// leaving --file as the only way to supply a name. Mirrors tfinfra's
+	// Resource.CallerNamed, which surfaces the same API shape as a required
+	// "<type>_id" attribute.
+	CallerNamed bool
 }
 
 // Columns declares the default column set for list and describe table

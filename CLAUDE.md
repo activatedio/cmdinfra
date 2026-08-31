@@ -128,6 +128,19 @@ bool/int/float, string otherwise; enum completion values), the flag→field
 map, and the masked-fields list; plus `index_cmd_gen.go` with
 `Commands(deps)` returning the sorted service groups. Completion: enum
 flags and resource-name positional args (List under the resolved parent).
+Caller-assigned ids — `Resource.CallerNamed` covers APIs where the id comes
+from the caller rather than the server (kit's name-keyed entities:
+`AccessPermission` `guardcontrol.tenants.get`, `Domain` `example.com`),
+whose create request carries it in the entity's `name` field. The create
+verb then takes it as a positional argument like every other verb —
+`create <id>` instead of `create` — and `RunCreate` puts it in the record,
+so it applies over any `--file` document and the existing `ApplyRecord`
+path does the rest. A full resource name in that position is refused with
+an actionable error rather than composed into a nonsense name. Mirrors
+tfinfra's `Resource.CallerNamed`, which surfaces the same API shape as a
+required `<type>_id` attribute; `examples/petstore`'s `Toy` is the golden
+case on both sides.
+
 Association verbs — each `Associate` marker (several per entity is fine)
 reflect-validates its kit-shaped `Associate{Targets}To{Entity}` /
 `List{Targets}By{Entity}` RPC pair (the edge payload is located by its

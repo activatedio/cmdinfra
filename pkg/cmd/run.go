@@ -131,8 +131,11 @@ func RunDescribe(c *cobra.Command, svc GetService, r Resolver, collection, arg s
 }
 
 // RunCreate creates an entity from the set flags (and --file, when given)
-// under the resolved parent.
-func RunCreate[E proto.Message](c *cobra.Command, svc CreateService[E], r Resolver, fields map[string]string) error {
+// under the resolved parent. id is the caller-assigned resource id for a
+// CallerNamed resource — the create verb's positional argument, which the
+// API takes from the entity's name field — and "" when the server assigns
+// the id.
+func RunCreate[E proto.Message](c *cobra.Command, svc CreateService[E], r Resolver, fields map[string]string, id string) error {
 
 	parent, err := r.Parent()
 	if err != nil {
@@ -144,8 +147,19 @@ func RunCreate[E proto.Message](c *cobra.Command, svc CreateService[E], r Resolv
 		return err
 	}
 
+	record := ChangedRecord(c.Flags(), fields)
+
+	if id != "" {
+		if strings.Contains(id, "/") {
+			return fmt.Errorf("%q is a resource name, not an id: create takes the bare id, and the parent comes from the scope flags or the active context", id)
+		}
+		// The record applies over the --file entity, so an explicit id wins
+		// over a name in the document.
+		record[NameField] = id
+	}
+
 	key, err := svc.Create(c.Context(), CreateParams[E]{
-		Record: ChangedRecord(c.Flags(), fields),
+		Record: record,
 		Entity: entity,
 		Parent: parent,
 	})

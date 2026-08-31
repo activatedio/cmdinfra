@@ -26,6 +26,9 @@ type entityNames struct {
 	PbPath     string
 	PbType     string
 	ClientKey  string
+	// CallerNamed carries Resource.CallerNamed: the create verb takes the
+	// caller's id as its positional argument.
+	CallerNamed bool
 }
 
 func entityNamesFor(e gentf.Entry, res Resource) entityNames {
@@ -39,15 +42,16 @@ func entityNamesFor(e gentf.Entry, res Resource) entityNames {
 	}
 
 	return entityNames{
-		Entity:     t.Name(),
-		Lower:      lowerFirst(t.Name()),
-		Human:      strings.ReplaceAll(kebabFromCamel(t.Name()), "-", " "),
-		Group:      group,
-		PluralCmd:  pluralCmd,
-		Collection: collectionFor(e, res),
-		PbPath:     t.PkgPath(),
-		PbType:     t.Name(),
-		ClientKey:  key,
+		Entity:      t.Name(),
+		Lower:       lowerFirst(t.Name()),
+		Human:       strings.ReplaceAll(kebabFromCamel(t.Name()), "-", " "),
+		Group:       group,
+		PluralCmd:   pluralCmd,
+		Collection:  collectionFor(e, res),
+		PbPath:      t.PkgPath(),
+		PbType:      t.Name(),
+		CallerNamed: res.CallerNamed,
+		ClientKey:   key,
 	}
 }
 
@@ -453,8 +457,10 @@ func completionServices(n entityNames) *jen.Statement {
 }
 
 func verbUse(v Verb, n entityNames) string {
-	switch v.Name {
-	case "create", "list":
+	switch {
+	case v.Name == verbCreate && n.CallerNamed:
+		return "create <id>"
+	case v.Name == verbCreate, v.Name == "list":
 		return v.Name
 	default:
 		return v.Name + " <" + strings.ReplaceAll(n.Human, " ", "-") + ">"
@@ -463,7 +469,7 @@ func verbUse(v Verb, n entityNames) string {
 
 func verbShort(v Verb, n entityNames) string {
 	switch v.Name {
-	case "create":
+	case verbCreate:
 		return "Create a " + n.Human
 	case "delete":
 		return "Delete a " + n.Human
@@ -496,10 +502,14 @@ func verbShape(n entityNames, v Verb) (body []jen.Code, args *jen.Statement, nee
 	svc := jen.Id("new" + n.Entity + "Service").Call(jen.Id("client"))
 
 	switch v.Name {
-	case "create":
+	case verbCreate:
+		id, createArgs := jen.Lit(""), jen.Qual(cobraPkg, "NoArgs")
+		if n.CallerNamed {
+			id, createArgs = jen.Id("args").Index(jen.Lit(0)), jen.Qual(cobraPkg, "ExactArgs").Call(jen.Lit(1))
+		}
 		body = withPrologue(jen.Return(jen.Qual(cmdPkg, "RunCreate").Call(
-			jen.Id("cc"), svc, jen.Id("r"), jen.Id(n.Lower+"FlagFields"))))
-		return body, jen.Qual(cobraPkg, "NoArgs"), false,
+			jen.Id("cc"), svc, jen.Id("r"), jen.Id(n.Lower+"FlagFields"), id)))
+		return body, createArgs, false,
 			[]jen.Code{
 				jen.Id("add" + n.Entity + "FieldFlags").Call(jen.Id("c")),
 				jen.Qual(cmdPkg, "AddFileFlag").Call(jen.Id("c")),

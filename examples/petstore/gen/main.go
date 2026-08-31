@@ -19,12 +19,15 @@ import (
 // predefines none.
 var scopeStore = aip.NewScope("stores")
 
+// service is the example's command group and its Deps client key.
+const service = "petstore"
+
 func main() {
 
 	gencmd.NewRegistry().RunDirectoryPathHandler("../generated", &gencmd.Spec{
 		Package: "generated",
 		Root: gencmd.Root{
-			Use:   "petstore",
+			Use:   service,
 			Short: "A cmdinfra-generated petstore CLI",
 		},
 		Entries: []gentf.Entry{
@@ -33,13 +36,27 @@ func main() {
 				Implementations: []any{
 					gencmd.Resource{
 						Scope:      scopeStore,
-						Group:      "petstore",
+						Group:      service,
 						ClientType: reflect.TypeFor[petstorev1.PetStoreServiceClient](),
-						Client:     "petstore",
+						Client:     service,
 					},
 					gencmd.Columns{Default: []string{"name", "display_name", "type"}},
 					gencmd.FieldFlags{Sensitive: []string{"metadata"}},
 					gencmd.Associate{Target: reflect.TypeFor[petstorev1.Toy]()},
+				},
+			},
+			{
+				// Toy is caller-named: `create` takes the id the caller
+				// chooses, the way kit's name-keyed entities do.
+				Type: reflect.TypeFor[petstorev1.Toy](),
+				Implementations: []any{
+					gencmd.Resource{
+						Scope:       scopeStore,
+						Group:       service,
+						ClientType:  reflect.TypeFor[petstorev1.PetStoreServiceClient](),
+						Client:      service,
+						CallerNamed: true,
+					},
 				},
 			},
 		},

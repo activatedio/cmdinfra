@@ -35,8 +35,52 @@ type fakePetStore struct {
 	mu            sync.Mutex
 	pets          map[string]*petstorev1.Pet
 	toys          map[string][]string
+	toyEntities   map[string]*petstorev1.Toy
 	seq           int
 	lastPatchMask []string
+}
+
+// --- Toy: the caller-named lane. The create request carries the row's id in
+// the entity's name field, and the server composes the full name.
+
+func (f *fakePetStore) CreateToy(_ context.Context, in *petstorev1.CreateToyRequest) (*petstorev1.Toy, error) {
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	id := in.GetToy().GetName()
+	if id == "" {
+		return nil, status.Error(codes.InvalidArgument, "toy name is required")
+	}
+
+	t := proto.Clone(in.GetToy()).(*petstorev1.Toy)
+	t.Name = fmt.Sprintf("%s/toys/%s", in.GetParent(), id)
+	if _, exists := f.toyEntities[t.GetName()]; exists {
+		return nil, status.Errorf(codes.AlreadyExists, "toy %q already exists", t.GetName())
+	}
+	f.toyEntities[t.GetName()] = t
+
+	return proto.Clone(t).(*petstorev1.Toy), nil
+}
+
+func (f *fakePetStore) GetToy(_ context.Context, in *petstorev1.GetToyRequest) (*petstorev1.Toy, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.toyEntities[in.GetName()]
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "toy %q not found", in.GetName())
+	}
+	return proto.Clone(t).(*petstorev1.Toy), nil
+}
+
+func (f *fakePetStore) DeleteToy(_ context.Context, in *petstorev1.DeleteToyRequest) (*emptypb.Empty, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.toyEntities[in.GetName()]; !ok {
+		return nil, status.Errorf(codes.NotFound, "toy %q not found", in.GetName())
+	}
+	delete(f.toyEntities, in.GetName())
+	return &emptypb.Empty{}, nil
 }
 
 func (f *fakePetStore) GetPet(_ context.Context, in *petstorev1.GetPetRequest) (*petstorev1.Pet, error) {
@@ -164,7 +208,11 @@ func newHarness(t *testing.T) *harness {
 
 	t.Helper()
 
-	fake := &fakePetStore{pets: map[string]*petstorev1.Pet{}, toys: map[string][]string{}}
+	fake := &fakePetStore{
+		pets:        map[string]*petstorev1.Pet{},
+		toys:        map[string][]string{},
+		toyEntities: map[string]*petstorev1.Toy{},
+	}
 
 	lis, err := new(net.ListenConfig).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -377,4 +425,37 @@ func TestCLI_Associations(t *testing.T) {
 	_, err = h.run(t, "petstore", "pets", "remove-toys", "stores/s-1/pets/p-1", "toys/ball")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"toys/rope"}, h.fake.toys["stores/s-1/pets/p-1"])
+}
+
+// TestCLI_CallerNamedCreate covers the caller-named lane: `create` takes the
+// id as its positional argument, the API receives it in the entity's name
+// field, and a full resource name in that position is refused rather than
+// composed into a nonsense name.
+func TestCLI_CallerNamedCreate(t *testing.T) {
+
+	h := newHarness(t)
+
+	out, err := h.run(t, "petstore", "toys", "create", "squeaky-bone",
+		"--store-id", "s-1", "--display-name", "Squeaky bone")
+	require.NoError(t, err)
+	assert.Equal(t, "Created stores/s-1/toys/squeaky-bone\n", out)
+
+	server := h.fake.toyEntities["stores/s-1/toys/squeaky-bone"]
+	require.NotNil(t, server)
+	assert.Equal(t, "Squeaky bone", server.GetDisplayName())
+
+	// The verb's usage line advertises the id.
+	out, err = h.run(t, "petstore", "toys", "create", "--help")
+	require.NoError(t, err)
+	assert.Contains(t, out, "create <id>")
+
+	// A full resource name is not an id.
+	_, err = h.run(t, "petstore", "toys", "create", "stores/s-1/toys/other",
+		"--store-id", "s-1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "is a resource name, not an id")
+
+	// The id is required: cobra rejects the verb without it.
+	_, err = h.run(t, "petstore", "toys", "create", "--store-id", "s-1")
+	require.Error(t, err)
 }

@@ -144,7 +144,7 @@ func newPetCreateCommand(deps *cmd.Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmd.RunCreate(cc, newPetService(client), r, petFlagFields)
+			return cmd.RunCreate(cc, newPetService(client), r, petFlagFields, "")
 		},
 		Short: "Create a pet",
 		Use:   "create",

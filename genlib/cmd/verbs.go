@@ -16,6 +16,11 @@ type Verb struct {
 	Op gentf.Ops
 }
 
+// verbCreate is the create verb's name; it is the one verb whose shape
+// depends on a marker (Resource.CallerNamed), so it is referenced from both
+// the verb table and the command generator.
+const verbCreate = "create"
+
 // VerbsFor derives the verb set from the entry's declared operations, in
 // canonical order: create, delete, describe, edit, list, update.
 //
@@ -36,7 +41,7 @@ func VerbsFor(ops gentf.Ops) []Verb {
 	mutateOp, canMutate := mutateOpFor(ops)
 
 	if ops.Has(gentf.OpCreate) {
-		verbs = append(verbs, Verb{Name: "create", Op: gentf.OpCreate})
+		verbs = append(verbs, Verb{Name: verbCreate, Op: gentf.OpCreate})
 	}
 	if ops.Has(gentf.OpDelete) {
 		verbs = append(verbs, Verb{Name: "delete", Op: gentf.OpDelete})

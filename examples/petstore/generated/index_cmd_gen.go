@@ -14,5 +14,6 @@ func Commands(deps *cmd.Deps) []*cobra.Command {
 		Use:   "petstore",
 	}
 	group0.AddCommand(NewPetCommand(deps))
+	group0.AddCommand(NewToyCommand(deps))
 	return []*cobra.Command{group0}
 }
