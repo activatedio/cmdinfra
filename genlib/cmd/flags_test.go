@@ -46,6 +46,7 @@ func TestNormalizeFlags(t *testing.T) {
 				assert.Equal(t, []string{
 					"display-name", "type", "age", "vaccinated", "weight",
 					"tags", "labels", "create-time", "config", "metadata",
+					"feeding", "intake-code", "intake-age-days", "grooming-interval",
 				}, names)
 			},
 		},
@@ -64,6 +65,12 @@ func TestNormalizeFlags(t *testing.T) {
 				assert.Equal(t, gentf.FieldAny, flagByName(t, flags, "config").Field.Kind)
 				assert.Equal(t, gentf.FieldStruct, flagByName(t, flags, "metadata").Field.Kind)
 				assert.Equal(t, gentf.FieldTimestamp, flagByName(t, flags, "create-time").Field.Kind)
+			},
+		},
+		"durations are typed, not JSON": {
+			arrange: func() cmd.FieldFlags { return cmd.FieldFlags{} },
+			assert: func(t *testing.T, run func() []cmd.Flag) {
+				assert.Equal(t, gentf.FieldDuration, flagByName(t, run(), "grooming-interval").Field.Kind)
 			},
 		},
 		"rename and exclude apply": {

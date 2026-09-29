@@ -113,20 +113,28 @@ func addPetFieldFlags(c *cobra.Command) {
 	c.Flags().String("create-time", "", "create_time (RFC 3339)")
 	c.Flags().String("config", "", "config (JSON)")
 	c.Flags().String("metadata", "", "metadata (JSON) (sensitive)")
+	c.Flags().String("feeding", "", "feeding (JSON)")
+	c.Flags().String("intake-code", "", "intake_code")
+	c.Flags().Int64("intake-age-days", 0, "intake_age_days")
+	c.Flags().String("grooming-interval", "", "grooming_interval (duration, e.g. 5s, 1.5s, 500ms)")
 }
 
 // petFlagFields maps flag names to proto field names.
 var petFlagFields = map[string]string{
-	"age":          "age",
-	"config":       "config",
-	"create-time":  "create_time",
-	"display-name": "display_name",
-	"labels":       "labels",
-	"metadata":     "metadata",
-	"tags":         "tags",
-	"type":         "type",
-	"vaccinated":   "vaccinated",
-	"weight":       "weight",
+	"age":               "age",
+	"config":            "config",
+	"create-time":       "create_time",
+	"display-name":      "display_name",
+	"feeding":           "feeding",
+	"grooming-interval": "grooming_interval",
+	"intake-age-days":   "intake_age_days",
+	"intake-code":       "intake_code",
+	"labels":            "labels",
+	"metadata":          "metadata",
+	"tags":              "tags",
+	"type":              "type",
+	"vaccinated":        "vaccinated",
+	"weight":            "weight",
 }
 
 // petMaskedFields never print in table output.

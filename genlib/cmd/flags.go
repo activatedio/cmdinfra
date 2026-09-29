@@ -95,15 +95,16 @@ func validateFieldFlags(entity string, fields []gentf.Field, ff FieldFlags) {
 }
 
 // normalizedFields runs tfinfra's protoreflect normalization over the
-// entry, auto-marking every message-typed field (except Timestamp) as
-// JSON — the CLI's protojson string lane.
+// entry, auto-marking every message-typed field (except Timestamp and
+// Duration) as JSON — the CLI's protojson string lane.
 func normalizedFields(e gentf.Entry) []gentf.Field {
 	return gentf.NormalizeFields(e, gentf.Resource{JSON: autoJSON(e)})
 }
 
 // autoJSON collects the message-typed field names that surface as protojson
 // flags: Any, Struct, and any concrete message. Timestamps stay RFC 3339
-// strings.
+// strings and Durations Go duration strings ("5s", "500ms"), which tfinfra
+// types as FieldTimestamp and FieldDuration.
 func autoJSON(e gentf.Entry) []string {
 
 	t := entityType(e)
@@ -120,7 +121,8 @@ func autoJSON(e gentf.Entry) []string {
 		if fd.IsMap() || fd.IsList() || fd.Kind() != protoreflect.MessageKind {
 			continue
 		}
-		if fd.Message().FullName() == "google.protobuf.Timestamp" {
+		switch fd.Message().FullName() {
+		case "google.protobuf.Timestamp", "google.protobuf.Duration":
 			continue
 		}
 		names = append(names, string(fd.Name()))

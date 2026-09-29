@@ -2,6 +2,7 @@ package cmd_test
 
 import (
 	"testing"
+	"time"
 
 	petstorev1 "github.com/activatedio/tfinfra/examples/petstore/gen/petstore/v1"
 	"github.com/stretchr/testify/assert"
@@ -41,6 +42,42 @@ func TestApplyRecord(t *testing.T) {
 				assert.Equal(t, []string{"loud", "friendly"}, pet.GetTags())
 				assert.Equal(t, map[string]string{"team": "platform", "env": "prod"}, pet.GetLabels())
 				assert.Equal(t, "2026-08-16T01:02:03Z", pet.GetCreateTime().AsTime().Format("2006-01-02T15:04:05Z07:00"))
+			},
+		},
+		"duration in go syntax": {
+			arrange: func() cmd.StringsRecord {
+				return cmd.StringsRecord{"grooming_interval": "1m30s"}
+			},
+			assert: func(t *testing.T, pet *petstorev1.Pet, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, 90*time.Second, pet.GetGroomingInterval().AsDuration())
+			},
+		},
+		"duration below a second": {
+			arrange: func() cmd.StringsRecord {
+				return cmd.StringsRecord{"grooming_interval": "500ms"}
+			},
+			assert: func(t *testing.T, pet *petstorev1.Pet, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, 500*time.Millisecond, pet.GetGroomingInterval().AsDuration())
+			},
+		},
+		"duration in the quoted protojson form": {
+			arrange: func() cmd.StringsRecord {
+				return cmd.StringsRecord{"grooming_interval": `"2.5s"`}
+			},
+			assert: func(t *testing.T, pet *petstorev1.Pet, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, 2500*time.Millisecond, pet.GetGroomingInterval().AsDuration())
+			},
+		},
+		"bad duration errors with the field name": {
+			arrange: func() cmd.StringsRecord {
+				return cmd.StringsRecord{"grooming_interval": "5"}
+			},
+			assert: func(t *testing.T, _ *petstorev1.Pet, err error) {
+				require.ErrorContains(t, err, `field "grooming_interval"`)
+				require.ErrorContains(t, err, `"5" is not a duration`)
 			},
 		},
 		"any from protojson with @type": {

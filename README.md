@@ -34,8 +34,10 @@ markers:
 - **Flags** derive from the pb message via protoreflect: proto snake_case →
   `--kebab-case` (`display_name` → `--display-name`). The AIP `name` field
   is never a flag — it is the verb's positional argument. Enum fields get
-  their value names as shell-completion candidates. Message-typed fields
-  (Any, Struct, concrete messages) surface as protojson string flags
+  their value names as shell-completion candidates. Timestamps take RFC 3339
+  and Durations Go duration syntax (`--timeout 500ms`, `1m30s`; the quoted
+  protojson form `'"1.5s"'` still parses). Other message-typed fields (Any,
+  Struct, concrete messages) surface as protojson string flags
   automatically. `FieldFlags{Exclude, Rename, Sensitive}` tunes the result;
   sensitive fields are prompted for, never echoed.
 - **Verbs** derive from `Ops` (zero = all): `OpGet`→`describe`,

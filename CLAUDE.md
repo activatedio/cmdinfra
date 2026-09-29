@@ -50,8 +50,9 @@ examples/greet    # end-to-end example; generated/ is the golden output contract
 
 The spec model deliberately reuses tfinfra rather than redefining:
 `gentf.Entry` + `Get/HasImplementation`, `gentf.Ops`, `gentf.Field`/
-`FieldKind` (via `gentf.NormalizeFields` — cmdinfra auto-marks all
-message-typed fields JSON, the CLI's protojson string lane), and
+`FieldKind` (via `gentf.NormalizeFields` — cmdinfra auto-marks every
+message-typed field but Timestamp and Duration JSON, the CLI's protojson
+string lane; those two stay tfinfra's typed kinds), and
 `pkg/tf.Scope` for AIP hierarchy semantics. All of that is
 **generation-time only** today. Before generated runtime code needs scope
 composition (the service adapter / command generators), Scope must move to

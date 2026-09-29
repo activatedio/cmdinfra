@@ -378,6 +378,8 @@ func flagUsage(fl Flag) string {
 		usage += " (" + strings.Join(fl.Field.EnumValues, "|") + ")"
 	case gentf.FieldTimestamp:
 		usage += " (RFC 3339)"
+	case gentf.FieldDuration:
+		usage += " (duration, e.g. 5s, 1.5s, 500ms)"
 	case gentf.FieldStringList:
 		usage += " (comma-separated)"
 	case gentf.FieldStringMap:

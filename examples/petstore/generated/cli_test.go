@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	petstorev1 "github.com/activatedio/tfinfra/examples/petstore/gen/petstore/v1"
 	"github.com/stretchr/testify/assert"
@@ -281,6 +282,7 @@ func TestCLI_Lifecycle(t *testing.T) {
 		"--tags", "loud,friendly",
 		"--labels", "team=platform",
 		"--config", `{"@type": "type.googleapis.com/petstore.v1.CollarConfig", "color": "red"}`,
+		"--grooming-interval", "1m30s",
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "Created stores/s-1/pets/p-1\n", out)
@@ -289,6 +291,7 @@ func TestCLI_Lifecycle(t *testing.T) {
 	require.NotNil(t, server)
 	assert.Equal(t, petstorev1.PetType_PET_TYPE_DOG, server.GetType())
 	assert.Equal(t, []string{"loud", "friendly"}, server.GetTags())
+	assert.Equal(t, 90*time.Second, server.GetGroomingInterval().AsDuration())
 
 	out, err = h.run(t, "petstore", "pets", "describe", "p-1", "--store-id", "s-1")
 	require.NoError(t, err)

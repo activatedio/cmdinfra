@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"sigs.k8s.io/yaml"
 )
@@ -248,15 +249,24 @@ func applyEnumField(ref protoreflect.Message, fd protoreflect.FieldDescriptor, v
 }
 
 // applyMessageField sets a message-typed field: timestamps from RFC 3339,
-// everything else (Any, Struct, concrete messages) from protojson.
+// durations from Go duration syntax, everything else (Any, Struct, concrete
+// messages) from protojson.
 func applyMessageField(ref protoreflect.Message, fd protoreflect.FieldDescriptor, value string) error {
 
-	if fd.Message().FullName() == "google.protobuf.Timestamp" {
+	switch fd.Message().FullName() {
+	case "google.protobuf.Timestamp":
 		ts, err := time.Parse(time.RFC3339, value)
 		if err != nil {
 			return fmt.Errorf("%q is not an RFC 3339 timestamp", value)
 		}
 		ref.Set(fd, protoreflect.ValueOfMessage(timestamppb.New(ts).ProtoReflect()))
+		return nil
+	case "google.protobuf.Duration":
+		d, err := parseDuration(value)
+		if err != nil {
+			return err
+		}
+		ref.Set(fd, protoreflect.ValueOfMessage(durationpb.New(d).ProtoReflect()))
 		return nil
 	}
 
@@ -266,6 +276,25 @@ func applyMessageField(ref protoreflect.Message, fd protoreflect.FieldDescriptor
 	}
 	ref.Set(fd, protoreflect.ValueOfMessage(msg))
 	return nil
+}
+
+// parseDuration reads Go duration syntax, a superset of the protojson form
+// ("1.5s") that also takes "500ms" and "1m30s" — tfinfra's FieldDuration
+// syntax, so a value means the same on the CLI and in Terraform. The quoted
+// protojson string ("\"1.5s\"") is accepted too: it is what the JSON lane
+// took before durations were typed.
+func parseDuration(value string) (time.Duration, error) {
+
+	s := value
+	if unquoted, err := strconv.Unquote(value); err == nil {
+		s = unquoted
+	}
+
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, fmt.Errorf("%q is not a duration (e.g. 5s, 1.5s, 500ms)", value)
+	}
+	return d, nil
 }
 
 // NameOf returns the entity's AIP resource name, or "" when the message has
