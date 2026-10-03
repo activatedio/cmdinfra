@@ -3,8 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 // CrudClient is the closure seam over one resource's AIP operations.
@@ -200,7 +202,7 @@ func (c *Crud[E]) PatchEntity(ctx context.Context, name string, entity E, mask [
 		return "", c.unsupported("patch")
 	}
 
-	patched, err := c.params.Client.Patch(ctx, name, entity, mask)
+	patched, err := c.params.Client.Patch(ctx, name, maskedCopy(entity, mask), mask)
 	if err != nil {
 		return "", err
 	}
@@ -208,6 +210,32 @@ func (c *Crud[E]) PatchEntity(ctx context.Context, name string, entity E, mask [
 		return key, nil
 	}
 	return name, nil
+}
+
+// maskedCopy is the entity carrying only the fields its mask names (by the
+// first segment of each path), which is what a patch body means. The editor
+// flow reads the whole entity and sends it back, so without this the body
+// would also carry every field the mask leaves out: harmless to a server
+// that reads only masked fields, refused by one that checks the body too —
+// an output-only field echoed from the read, for one.
+func maskedCopy[E proto.Message](entity E, mask []string) E {
+
+	src := entity.ProtoReflect()
+	dst := src.New()
+	fds := src.Descriptor().Fields()
+
+	for _, path := range mask {
+		top, _, _ := strings.Cut(path, ".")
+		fd := fds.ByName(protoreflect.Name(top))
+		if fd == nil {
+			fd = fds.ByJSONName(top)
+		}
+		if fd != nil && src.Has(fd) {
+			dst.Set(fd, src.Get(fd))
+		}
+	}
+
+	return dst.Interface().(E)
 }
 
 func (c *Crud[E]) unsupported(op string) error {

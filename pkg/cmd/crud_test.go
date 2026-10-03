@@ -176,3 +176,32 @@ func TestCrud_UnsupportedOps(t *testing.T) {
 	_, err = crud.Delete(ctx, cmd.DeleteParams{Name: "x"})
 	require.ErrorContains(t, err, "pet does not support delete")
 }
+
+// TestCrud_PatchEntityBodyIsMasked: the editor flow sends back the entity it
+// read, but the patch body carries only the fields the mask names, so a
+// server that checks the body never sees an untouched field echoed back.
+func TestCrud_PatchEntityBodyIsMasked(t *testing.T) {
+
+	crud, fake := newPetCrud(t)
+	ctx := context.Background()
+
+	created, err := crud.Create(ctx, cmd.CreateParams[*petstorev1.Pet]{
+		Parent: "stores/s-1",
+		Record: cmd.StringsRecord{"display_name": "Rex", "tags": "loud", "age": "3"},
+	})
+	require.NoError(t, err)
+
+	read, err := crud.GetEntity(ctx, created)
+	require.NoError(t, err)
+	read.DisplayName = "Lord Rex"
+
+	_, err = crud.PatchEntity(ctx, created, read, []string{"display_name"})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"display_name"}, fake.lastPatchMask)
+	assert.Equal(t, "Lord Rex", fake.lastPatchBody.GetDisplayName())
+	assert.Empty(t, fake.lastPatchBody.GetTags(), "an unmasked field is not in the body")
+	assert.Zero(t, fake.lastPatchBody.GetAge())
+	assert.Empty(t, fake.lastPatchBody.GetName())
+	assert.Equal(t, []string{"loud"}, fake.pets[created].GetTags(), "and the server keeps it")
+}

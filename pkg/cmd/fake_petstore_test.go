@@ -31,6 +31,8 @@ type fakePetStore struct {
 	pageSize int
 
 	lastPatchMask []string
+	// lastPatchBody is the entity the patch carried, as sent.
+	lastPatchBody *petstorev1.Pet
 }
 
 func newFakePetStore() *fakePetStore {
@@ -93,6 +95,7 @@ func (f *fakePetStore) PatchPet(_ context.Context, in *petstorev1.PatchPetReques
 		return nil, status.Errorf(codes.NotFound, "pet %q not found", in.GetName())
 	}
 	f.lastPatchMask = in.GetUpdateMask().GetPaths()
+	f.lastPatchBody = proto.Clone(in.GetPet()).(*petstorev1.Pet)
 	for _, path := range in.GetUpdateMask().GetPaths() {
 		switch path {
 		case "display_name":
