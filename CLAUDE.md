@@ -129,6 +129,11 @@ bool/int/float, string otherwise; enum completion values), the flag→field
 map, and the masked-fields list; plus `index_cmd_gen.go` with
 `Commands(deps)` returning the sorted service groups. Completion: enum
 flags and resource-name positional args (List under the resolved parent).
+Generated-name stems — `Resource.Name` overrides the message name as the
+stem of an entry's file and Go identifiers, for two entries whose messages
+share a name across packages (awctl's identity and Guard `User`); the
+command path is unchanged. Duplicate stems in a spec panic, naming both
+types — before, the second entry silently overwrote the first.
 Caller-assigned ids — `Resource.CallerNamed` covers APIs where the id comes
 from the caller rather than the server (kit's name-keyed entities:
 `AccessPermission` `guardcontrol.tenants.get`, `Domain` `example.com`),

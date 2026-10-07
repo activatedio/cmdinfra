@@ -28,6 +28,15 @@ func CommandPath(e gentf.Entry, res Resource) (group, plural string) {
 	return res.Group, plural
 }
 
+// identName returns the stem of the entry's generated Go identifiers and
+// file name: Resource.Name, or the entity's message name.
+func identName(e gentf.Entry, res Resource) string {
+	if res.Name != "" {
+		return res.Name
+	}
+	return entityType(e).Name()
+}
+
 // kebabFromCamel converts a CamelCase entity name to kebab-case
 // ("AppearanceProfile" → "appearance-profile").
 func kebabFromCamel(s string) string {

@@ -52,6 +52,14 @@ type Resource struct {
 	// Resource.CallerNamed, which surfaces the same API shape as a required
 	// "<type>_id" attribute.
 	CallerNamed bool
+	// Name overrides the stem of the generated Go identifiers and file
+	// (New<Name>Command, <name>FlagFields, <name>_cmd_gen.go), which
+	// defaults to the entity's message name. Set it when two entries in
+	// one spec share a message name from different packages — both
+	// emit into the same package, so they need distinct stems. The
+	// command path is unaffected: guard users stays "users" beside
+	// identity users. Must be an exported Go identifier.
+	Name string
 }
 
 // Columns declares the default column set for list and describe table

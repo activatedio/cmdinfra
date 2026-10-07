@@ -50,6 +50,18 @@ markers:
 - **Scope** contributes one flag per parent collection
   (`NewScope("tenants")` → `--tenant-id`), resolved against the active
   named context when omitted.
+- **Generated names** — the `<entity>_cmd_gen.go` file and its Go
+  identifiers (`New<Entity>Command`, `<entity>FlagFields`, ...) — stem from
+  the pb message name. Every entry emits into one package, so two entries
+  whose messages share a name (`User` from two services) need
+  `Resource{Name}` on one of them; generation panics until they differ.
+  `Name` changes no command path:
+
+  ```go
+  cmd.Resource{Scope: tf.NewScope("tenants"), Group: "guard", Name: "GuardUser"}
+  // awctl guard users ... beside awctl identity users ...
+  // emits guard_user_cmd_gen.go, NewGuardUserCommand
+  ```
 
 Worked examples, one per scope depth:
 

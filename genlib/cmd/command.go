@@ -17,7 +17,7 @@ const (
 
 // entityNames collects the derived identifiers one entity's file uses.
 type entityNames struct {
-	Entity     string // Pet
+	Entity     string // Pet (Go identifier stem: Resource.Name or the message name)
 	Lower      string // pet
 	Human      string // appearance profile
 	Group      string // petstore
@@ -35,6 +35,7 @@ func entityNamesFor(e gentf.Entry, res Resource) entityNames {
 
 	group, pluralCmd := CommandPath(e, res)
 	t := entityType(e)
+	ident := identName(e, res)
 
 	key := res.Client
 	if key == "" {
@@ -42,8 +43,8 @@ func entityNamesFor(e gentf.Entry, res Resource) entityNames {
 	}
 
 	return entityNames{
-		Entity:      t.Name(),
-		Lower:       lowerFirst(t.Name()),
+		Entity:      ident,
+		Lower:       lowerFirst(ident),
 		Human:       strings.ReplaceAll(kebabFromCamel(t.Name()), "-", " "),
 		Group:       group,
 		PluralCmd:   pluralCmd,
