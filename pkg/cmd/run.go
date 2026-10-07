@@ -300,15 +300,43 @@ func RunDelete(c *cobra.Command, svc DeleteService, r Resolver, collection, arg 
 }
 
 // RunAssociate adds or removes association targets: args[0] is the entity
-// (short ID or full name), the rest are the targets, passed verbatim.
-func RunAssociate(c *cobra.Command, svc AssociateService, r Resolver, collection string, args []string, remove bool) error {
+// and the rest are the targets, each a short ID or a full name. With a
+// targetCollection the targets resolve as the entity does; without one
+// they are passed verbatim.
+func RunAssociate(c *cobra.Command, svc AssociateService, r Resolver, collection, targetCollection string, args []string, remove bool) error {
 
 	name, err := r.Name(collection, args[0])
 	if err != nil {
 		return err
 	}
 
+	// A target resolves the way the entity does: a bare id composes into a
+	// full name under the same scope, and a full name is checked against
+	// the target's collection, so the server only ever sees names. Without
+	// a target collection (a target outside the entity's scope) targets go
+	// through as typed.
 	targets := args[1:]
+	if targetCollection != "" {
+		// The targets share the entity's scope, so the scope the entity's
+		// name settled on is theirs too: `remove-toys stores/s-1/pets/p-1
+		// ball` needs no --store-id.
+		ids, _, err := r.ParseBack(collection, name)
+		if err != nil {
+			return err
+		}
+		tr := r
+		tr.Explicit = ids
+
+		targets = make([]string, 0, len(args)-1)
+		for _, arg := range args[1:] {
+			t, err := tr.Name(targetCollection, arg)
+			if err != nil {
+				return fmt.Errorf("target %q: %w", arg, err)
+			}
+			targets = append(targets, t)
+		}
+	}
+
 	if remove {
 		err = svc.Remove(c.Context(), name, targets)
 	} else {

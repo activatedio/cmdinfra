@@ -102,7 +102,7 @@ func fileMainHandler(f *jen.File, _ gen.Registry, entry any) {
 func entityFileMainHandler(f *jen.File, _ gen.Registry, entry any) {
 	fm := entry.(*EntityFileMain)
 	res, _ := gentf.GetImplementation[Resource](fm.Entry)
-	writeEntityCommand(f, fm.Entry, res)
+	writeEntityCommand(f, fm.Spec, fm.Entry, res)
 }
 
 // writeCommandIndex emits Commands(deps): the service command groups

@@ -357,7 +357,7 @@ func newPetAddToysCommand(deps *cmd.Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmd.RunAssociate(cc, newPetToysAssociator(client), r, "pets", args, false)
+			return cmd.RunAssociate(cc, newPetToysAssociator(client), r, "pets", "toys", args, false)
 		},
 		Short: "Add toys to a pet",
 		Use:   "add-toys <pet> <target>...",
@@ -377,7 +377,7 @@ func newPetRemoveToysCommand(deps *cmd.Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cmd.RunAssociate(cc, newPetToysAssociator(client), r, "pets", args, true)
+			return cmd.RunAssociate(cc, newPetToysAssociator(client), r, "pets", "toys", args, true)
 		},
 		Short: "Remove toys from a pet",
 		Use:   "remove-toys <pet> <target>...",

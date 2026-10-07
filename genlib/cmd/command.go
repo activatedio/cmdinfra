@@ -61,7 +61,7 @@ func (n entityNames) pbType() *jen.Statement {
 }
 
 // writeEntityCommand emits one entity's full command surface.
-func writeEntityCommand(f *jen.File, e gentf.Entry, res Resource) {
+func writeEntityCommand(f *jen.File, spec *Spec, e gentf.Entry, res Resource) {
 
 	ff, _ := gentf.GetImplementation[FieldFlags](e)
 	cols, _ := gentf.GetImplementation[Columns](e)
@@ -74,7 +74,7 @@ func writeEntityCommand(f *jen.File, e gentf.Entry, res Resource) {
 
 	models := make([]associationModel, 0, len(associations(e)))
 	for _, a := range associations(e) {
-		models = append(models, analyzeAssociation(e, res, a))
+		models = append(models, analyzeAssociation(spec, e, res, a))
 	}
 
 	writeGroupCommand(f, n, verbs, models)

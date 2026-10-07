@@ -415,19 +415,28 @@ func TestCLI_Associations(t *testing.T) {
 	_, err := h.run(t, "petstore", "pets", "create", "--store-id", "s-1", "--display-name", "Rex")
 	require.NoError(t, err)
 
-	out, err := h.run(t, "petstore", "pets", "add-toys", "p-1", "--store-id", "s-1", "toys/ball", "toys/rope")
+	// A target resolves as the pet does: a bare id composes under the same
+	// scope, and a full name passes after its own check. The server sees
+	// names either way.
+	out, err := h.run(t, "petstore", "pets", "add-toys", "p-1", "--store-id", "s-1", "ball", "stores/s-1/toys/rope")
 	require.NoError(t, err)
 	assert.Equal(t, "Updated stores/s-1/pets/p-1\n", out)
-	assert.Equal(t, []string{"toys/ball", "toys/rope"}, h.fake.toys["stores/s-1/pets/p-1"])
+	assert.Equal(t, []string{"stores/s-1/toys/ball", "stores/s-1/toys/rope"}, h.fake.toys["stores/s-1/pets/p-1"])
 
 	out, err = h.run(t, "petstore", "pets", "list-toys", "p-1", "--store-id", "s-1")
 	require.NoError(t, err)
-	assert.Contains(t, out, "toys/ball")
-	assert.Contains(t, out, "Toy toys/rope")
+	assert.Contains(t, out, "stores/s-1/toys/ball")
+	assert.Contains(t, out, "Toy stores/s-1/toys/rope")
 
-	_, err = h.run(t, "petstore", "pets", "remove-toys", "stores/s-1/pets/p-1", "toys/ball")
+	_, err = h.run(t, "petstore", "pets", "remove-toys", "stores/s-1/pets/p-1", "ball")
 	require.NoError(t, err)
-	assert.Equal(t, []string{"toys/rope"}, h.fake.toys["stores/s-1/pets/p-1"])
+	assert.Equal(t, []string{"stores/s-1/toys/rope"}, h.fake.toys["stores/s-1/pets/p-1"])
+
+	// A full name in another collection is refused before the call,
+	// naming the target, rather than sent for the server to reject.
+	_, err = h.run(t, "petstore", "pets", "add-toys", "p-1", "--store-id", "s-1", "stores/s-1/pets/p-2")
+	require.ErrorContains(t, err, `target "stores/s-1/pets/p-2"`)
+	assert.Equal(t, []string{"stores/s-1/toys/rope"}, h.fake.toys["stores/s-1/pets/p-1"])
 }
 
 // TestCLI_CallerNamedCreate covers the caller-named lane: `create` takes the

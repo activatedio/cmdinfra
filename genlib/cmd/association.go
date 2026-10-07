@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	gentf "github.com/activatedio/tfinfra/genlib/tf"
@@ -15,6 +16,11 @@ type associationModel struct {
 	Noun         string // toys (kebab, the verb suffix)
 	TargetPlural string // Toys
 	Target       reflect.Type
+	// TargetCollection is the target's AIP collection when it shares the
+	// entity's scope, so a bare target id composes into a full name the
+	// way the entity's own argument does; empty passes targets through as
+	// given (see targetCollection).
+	TargetCollection string
 
 	AssocMethod     string
 	AssocRequest    reflect.Type
@@ -47,7 +53,7 @@ func associations(e gentf.Entry) []Associate {
 // analyzeAssociation validates the edge's RPC pair on the client interface
 // and derives the request shapes. It panics on anything unexpected —
 // generation failures must be loud.
-func analyzeAssociation(e gentf.Entry, res Resource, a Associate) associationModel {
+func analyzeAssociation(spec *Spec, e gentf.Entry, res Resource, a Associate) associationModel {
 
 	entity := entityType(e).Name()
 
@@ -75,16 +81,17 @@ func analyzeAssociation(e gentf.Entry, res Resource, a Associate) associationMod
 	listRes := lm.Type.Out(0).Elem()
 
 	model := associationModel{
-		Noun:            noun,
-		TargetPlural:    targetPlural,
-		Target:          target,
-		AssocMethod:     m.Name,
-		AssocRequest:    assocReq,
-		AssocNameField:  requireProtoField(entity, assocReq, "name"),
-		AssocEdgeField:  edgeField,
-		EdgeType:        edgeType,
-		EdgeSetField:    requireProtoField(entity, edgeType, "set"),
-		EdgeRemoveField: requireProtoField(entity, edgeType, "remove"),
+		Noun:             noun,
+		TargetPlural:     targetPlural,
+		Target:           target,
+		TargetCollection: targetCollection(spec, res, target),
+		AssocMethod:      m.Name,
+		AssocRequest:     assocReq,
+		AssocNameField:   requireProtoField(entity, assocReq, "name"),
+		AssocEdgeField:   edgeField,
+		EdgeType:         edgeType,
+		EdgeSetField:     requireProtoField(entity, edgeType, "set"),
+		EdgeRemoveField:  requireProtoField(entity, edgeType, "remove"),
 
 		ListMethod:         lm.Name,
 		ListRequest:        listReq,
@@ -100,6 +107,32 @@ func analyzeAssociation(e gentf.Entry, res Resource, a Associate) associationMod
 	}
 
 	return model
+}
+
+// targetCollection is the association target's AIP collection, read from
+// the target's own entry in the spec so a Collection override there is the
+// name the server knows (kebab "access-permissions", not the derived
+// "accessPermissions"). Only a target in the entity's own scope gets one:
+// its full name is the entity's parent plus the target's collection and id,
+// so the entity's resolver can compose it. A target elsewhere in the
+// hierarchy, or not in the spec, gets "" and is passed through as typed —
+// a full name is then the only thing that will resolve.
+func targetCollection(spec *Spec, res Resource, target reflect.Type) string {
+
+	if spec == nil {
+		return ""
+	}
+	for _, te := range spec.Entries {
+		if entityType(te) != target {
+			continue
+		}
+		tres, ok := gentf.GetImplementation[Resource](te)
+		if !ok || !slices.Equal(tres.Scope.Collections(), res.Scope.Collections()) {
+			return ""
+		}
+		return collectionFor(te, tres)
+	}
+	return ""
 }
 
 func associationMethod(entity string, res Resource, name string) reflect.Method {
@@ -262,13 +295,13 @@ func writeAssociationVerb(f *jen.File, n entityNames, am associationModel, facto
 		args = jen.Qual(cobraPkg, "MinimumNArgs").Call(jen.Lit(2))
 		run = jen.Return(jen.Qual(cmdPkg, "RunAssociate").Call(
 			jen.Id("cc"), jen.Id(factory).Call(jen.Id("client")), jen.Id("r"),
-			jen.Lit(n.Collection), jen.Id("args"), jen.False()))
+			jen.Lit(n.Collection), jen.Lit(am.TargetCollection), jen.Id("args"), jen.False()))
 	case verbRemove:
 		short = "Remove " + nounHuman + " from a " + n.Human
 		args = jen.Qual(cobraPkg, "MinimumNArgs").Call(jen.Lit(2))
 		run = jen.Return(jen.Qual(cmdPkg, "RunAssociate").Call(
 			jen.Id("cc"), jen.Id(factory).Call(jen.Id("client")), jen.Id("r"),
-			jen.Lit(n.Collection), jen.Id("args"), jen.True()))
+			jen.Lit(n.Collection), jen.Lit(am.TargetCollection), jen.Id("args"), jen.True()))
 	default:
 		short = "List a " + n.Human + "'s " + nounHuman
 		args = jen.Qual(cobraPkg, "ExactArgs").Call(jen.Lit(1))
