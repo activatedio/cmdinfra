@@ -77,7 +77,7 @@ func newToyService(client v1.PetStoreServiceClient) *cmd.Crud[*v1.Toy] {
 				})
 			},
 		},
-		Columns: cmd.FieldList{"name", "display_name"},
+		Columns: cmd.FieldList{"id", "display_name"},
 		Name:    "toy",
 	})
 }

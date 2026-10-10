@@ -22,7 +22,7 @@ genlib/           # build-time code generation (panics on error)
     markers.go    # Resource, Columns, FieldFlags, Associate (pending), Search (pending)
     flags.go      # Flag + NormalizeFlags: tfinfra field normalization -> kebab flags
     verbs.go      # Verb + VerbsFor: Ops -> create/delete/describe/edit/list/update
-    columns.go    # ColumnsFor: Columns marker validated, name+display_name default
+    columns.go    # ColumnsFor: Columns marker validated, id+display_name default
     names.go      # CommandPath: group + derived kebab plural
     registry.go   # NewRegistry(), Spec + FileMain + EntityFileMain handlers, index
     root.go       # NewRootCommand emitter
@@ -116,7 +116,8 @@ error; positional args take a short ID or a validated full AIP name;
 contexts, the gcloud-configurations analog; 0600). Output + editor —
 table/yaml/json renderers (`NewRenderer`; dotted field paths; sensitive
 fields mask as ******** in tables, machine formats print everything for
-piping), and `Edit[E]`: the $EDITOR patch-diff flow (yaml temp file →
+piping; the virtual `id` column derives the bare id from `name`, and
+describe's default columns swap it back for the full name), and `Edit[E]`: the $EDITOR patch-diff flow (yaml temp file →
 editor → decode → `FieldDiff` update mask of exactly what changed; `name`
 never masks in).
 

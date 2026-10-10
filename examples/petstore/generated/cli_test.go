@@ -295,8 +295,12 @@ func TestCLI_Lifecycle(t *testing.T) {
 
 	out, err = h.run(t, "petstore", "pets", "describe", "p-1", "--store-id", "s-1")
 	require.NoError(t, err)
-	assert.Contains(t, out, "NAME")
-	assert.Contains(t, out, "Rex")
+	// describe shows the full name where list shows the bare id.
+	assert.Regexp(t, `^NAME +DISPLAY_NAME +TYPE\nstores/s-1/pets/p-1 +Rex +PET_TYPE_DOG\n$`, out)
+
+	out, err = h.run(t, "petstore", "pets", "describe", "p-1", "--store-id", "s-1", "--fields", "id,name")
+	require.NoError(t, err)
+	assert.Regexp(t, `^ID +NAME\np-1 +stores/s-1/pets/p-1\n$`, out)
 
 	out, err = h.run(t, "petstore", "pets", "update", "p-1", "--store-id", "s-1", "--display-name", "Lord Rex")
 	require.NoError(t, err)
@@ -329,6 +333,9 @@ func TestCLI_ListPaginationAndContext(t *testing.T) {
 	require.NoError(t, err)
 	// Three pets over two pages, one table.
 	assert.Equal(t, 4, strings.Count(out, "\n"))
+	// Rows lead with the bare id: the store is the scope the caller gave.
+	assert.Regexp(t, `^ID +DISPLAY_NAME +TYPE\np-1 +Pet 0`, out)
+	assert.NotContains(t, out, "stores/s-1")
 	assert.Contains(t, out, "Pet 0")
 	assert.Contains(t, out, "Pet 2")
 }

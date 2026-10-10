@@ -65,12 +65,20 @@ func renderParamsFrom(c *cobra.Command, svc BaseRetrievalService, masked []strin
 	}
 
 	fields := svc.DefaultFieldList()
-	if override, _ := c.Flags().GetString("fields"); override != "" {
-		fields = FieldList(strings.Split(override, ","))
+	if override := fieldsOverride(c); override != nil {
+		fields = override
 	}
 
 	r, err := NewRenderer(RendererParams{Format: format, Masked: masked})
 	return r, fields, err
+}
+
+// fieldsOverride is the --fields column list, or nil when it is unset.
+func fieldsOverride(c *cobra.Command) FieldList {
+	if override, _ := c.Flags().GetString("fields"); override != "" {
+		return FieldList(strings.Split(override, ","))
+	}
+	return nil
 }
 
 // fileEntity decodes --file when given.
@@ -126,6 +134,11 @@ func RunDescribe(c *cobra.Command, svc GetService, r Resolver, collection, arg s
 	renderer, fields, err := renderParamsFrom(c, svc, masked)
 	if err != nil {
 		return err
+	}
+	// The default columns lead with the bare id for lists; describe shows
+	// the full name. An explicit --fields is taken as written.
+	if fieldsOverride(c) == nil {
+		fields = addressed(record, fields)
 	}
 	return renderer.RenderSingle(record, fields, c.OutOrStdout())
 }

@@ -80,7 +80,7 @@ func newPetService(client v1.PetStoreServiceClient) *cmd.Crud[*v1.Pet] {
 				})
 			},
 		},
-		Columns: cmd.FieldList{"name", "display_name", "type"},
+		Columns: cmd.FieldList{"id", "display_name", "type"},
 		Name:    "pet",
 	})
 }
@@ -341,7 +341,7 @@ func newPetToysAssociator(client v1.PetStoreServiceClient) *cmd.Associator[*v1.T
 				return res.Toys, res.NextPageToken, nil
 			},
 		},
-		Columns: cmd.FieldList{"name", "display_name"},
+		Columns: cmd.FieldList{"id", "display_name"},
 		Name:    "pet toys",
 	})
 }

@@ -24,10 +24,18 @@ func TestColumnsFor(t *testing.T) {
 				assert.Equal(t, []string{"display_name", "type", "age"}, run())
 			},
 		},
-		"absent marker defaults to name and display_name": {
+		"absent marker defaults to the id and display_name": {
 			arrange: func() cmd.Columns { return cmd.Columns{} },
 			assert: func(t *testing.T, run func() []string) {
-				assert.Equal(t, []string{"name", "display_name"}, run())
+				assert.Equal(t, []string{"id", "display_name"}, run())
+			},
+		},
+		"the virtual id column is accepted beside real fields": {
+			arrange: func() cmd.Columns {
+				return cmd.Columns{Default: []string{"id", "name", "type"}}
+			},
+			assert: func(t *testing.T, run func() []string) {
+				assert.Equal(t, []string{"id", "name", "type"}, run())
 			},
 		},
 		"unknown column panics": {

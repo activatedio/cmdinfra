@@ -47,7 +47,8 @@ func NewRenderer(params RendererParams) (Renderer, error) {
 }
 
 // maxCellWidth caps table cell values; longer values trim with an
-// ellipsis.
+// ellipsis. The identifier columns (NameField, IDField) never trim: a
+// truncated name addresses nothing.
 const maxCellWidth = 40
 
 const maskedValue = "********"
@@ -126,15 +127,22 @@ func (t *tableRenderer) cell(rec Record, field string) string {
 	}
 
 	s := fmt.Sprintf("%v", v)
-	if len(s) > maxCellWidth {
+	if len(s) > maxCellWidth && field != NameField && field != IDField {
 		return s[:maxCellWidth-3] + "..."
 	}
 	return s
 }
 
 // pathValue walks a dotted field path ("buckle.material") into the
-// record's nested maps.
+// record's nested maps. IDField, absent from the record, derives from the
+// name.
 func pathValue(rec Record, path string) any {
+
+	if path == IDField {
+		if _, ok := rec[IDField]; !ok {
+			return shortID(rec)
+		}
+	}
 
 	var v any = map[string]any(rec)
 	for _, part := range strings.Split(path, ".") {
@@ -148,6 +156,36 @@ func pathValue(rec Record, path string) any {
 		}
 	}
 	return v
+}
+
+// shortID is the last segment of the record's name, or nil when it has
+// none.
+func shortID(rec Record) any {
+
+	name, ok := rec[NameField].(string)
+	if !ok || name == "" {
+		return nil
+	}
+	return name[strings.LastIndex(name, "/")+1:]
+}
+
+// addressed swaps the derived IDField column for the full name: a single
+// record is where the address belongs. A record with a real id field keeps
+// it.
+func addressed(rec Record, fields FieldList) FieldList {
+
+	if _, ok := rec[IDField]; ok {
+		return fields
+	}
+
+	out := make(FieldList, len(fields))
+	for i, f := range fields {
+		if f == IDField {
+			f = NameField
+		}
+		out[i] = f
+	}
+	return out
 }
 
 type yamlRenderer struct{}

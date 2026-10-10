@@ -111,3 +111,9 @@ func FieldDiff(before, after proto.Message) []string {
 
 // NameField is the AIP resource name field.
 const NameField = "name"
+
+// IDField is the virtual output column holding the resource's bare id: the
+// last segment of its name. A record that carries a real "id" field shows
+// that instead. List tables lead with it — the parent segments are the
+// scope the caller already supplied — while describe shows the full name.
+const IDField = "id"

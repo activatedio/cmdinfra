@@ -46,7 +46,12 @@ markers:
   `OpUpdate`→`update --file` (full replace) and `edit`. Patch wins when
   both mutate ops exist; `edit` additionally requires `OpGet`.
 - **Columns** (`Columns{Default}`) set the list/describe table fields,
-  defaulting to `name` + `display_name`.
+  defaulting to `id` + `display_name`. `id` is a virtual column — the bare
+  id, the last segment of `name` — valid on any message with a name: list
+  tables lead with it, since the parent segments are the scope the caller
+  already gave, and `describe` renders it as the full `name`. `--fields`
+  and `-o json|yaml` are unaffected. Tables never truncate the `name` or
+  `id` column: a cut-off identifier addresses nothing.
 - **Scope** contributes one flag per parent collection
   (`NewScope("tenants")` → `--tenant-id`), resolved against the active
   named context when omitted.

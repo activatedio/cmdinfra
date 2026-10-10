@@ -46,6 +46,32 @@ func TestRenderers(t *testing.T) {
 				assert.Equal(t, "NAME  BUCKLE.MATERIAL\np-1   brass\np-2   \n", out)
 			},
 		},
+		"table derives the id column from the name": {
+			arrange: func() (cmd.RendererParams, []cmd.Record, cmd.FieldList) {
+				return cmd.RendererParams{},
+					[]cmd.Record{
+						{"name": "tenants/t-01/issuers/i-01/audiences/a-01/clients/c-1i4r4a0k6qm82", "display_name": "Console"},
+						{"name": "c-2"},
+						{"display_name": "nameless"},
+					},
+					cmd.FieldList{"id", "display_name"}
+			},
+			assert: func(t *testing.T, out string, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, "ID               DISPLAY_NAME\nc-1i4r4a0k6qm82  Console\nc-2              \n                 nameless\n", out)
+			},
+		},
+		"table prefers a real id field": {
+			arrange: func() (cmd.RendererParams, []cmd.Record, cmd.FieldList) {
+				return cmd.RendererParams{},
+					[]cmd.Record{{"name": "users/u-1/devices/d-1", "id": "dev-x"}},
+					cmd.FieldList{"id"}
+			},
+			assert: func(t *testing.T, out string, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, "ID\ndev-x\n", out)
+			},
+		},
 		"table masks sensitive fields": {
 			arrange: func() (cmd.RendererParams, []cmd.Record, cmd.FieldList) {
 				return cmd.RendererParams{Masked: []string{"value"}},
@@ -61,13 +87,24 @@ func TestRenderers(t *testing.T) {
 		"table trims long values with an ellipsis": {
 			arrange: func() (cmd.RendererParams, []cmd.Record, cmd.FieldList) {
 				return cmd.RendererParams{},
-					[]cmd.Record{{"name": strings.Repeat("x", 45)}},
-					cmd.FieldList{"name"}
+					[]cmd.Record{{"description": strings.Repeat("x", 45)}},
+					cmd.FieldList{"description"}
 			},
 			assert: func(t *testing.T, out string, err error) {
 				require.NoError(t, err)
 				assert.Contains(t, out, strings.Repeat("x", 37)+"...")
 				assert.NotContains(t, out, strings.Repeat("x", 38))
+			},
+		},
+		"table never trims the name": {
+			arrange: func() (cmd.RendererParams, []cmd.Record, cmd.FieldList) {
+				return cmd.RendererParams{},
+					[]cmd.Record{{"name": "tenants/t-01/issuers/i-01/audiences/a-01/clients/c-1i4r4a0k6qm82"}},
+					cmd.FieldList{"name"}
+			},
+			assert: func(t *testing.T, out string, err error) {
+				require.NoError(t, err)
+				assert.Equal(t, "NAME\ntenants/t-01/issuers/i-01/audiences/a-01/clients/c-1i4r4a0k6qm82\n", out)
 			},
 		},
 		"yaml renders the full records": {
