@@ -154,6 +154,7 @@ func RunCreate[E proto.Message](c *cobra.Command, svc CreateService[E], r Resolv
 	if err != nil {
 		return err
 	}
+	r.EchoScope(c.ErrOrStderr(), "")
 
 	entity, err := fileEntity[E](c)
 	if err != nil {
@@ -164,7 +165,7 @@ func RunCreate[E proto.Message](c *cobra.Command, svc CreateService[E], r Resolv
 
 	if id != "" {
 		if strings.Contains(id, "/") {
-			return fmt.Errorf("%q is a resource name, not an id: create takes the bare id, and the parent comes from the scope flags or the active context", id)
+			return fmt.Errorf("%q is a resource name, not an id: create takes the bare id, and the parent comes from the scope flags or the profile's context", id)
 		}
 		// The record applies over the --file entity, so an explicit id wins
 		// over a name in the document.
@@ -192,6 +193,7 @@ func RunPatch[E proto.Message](c *cobra.Command, svc UpdateService[E], r Resolve
 	if err != nil {
 		return err
 	}
+	r.EchoScope(c.ErrOrStderr(), arg)
 
 	key, err := svc.Patch(c.Context(), PatchParams{
 		Record: ChangedRecord(c.Flags(), fields),
@@ -213,6 +215,7 @@ func RunUpdateFile[E proto.Message](c *cobra.Command, svc UpdateService[E], r Re
 	if err != nil {
 		return err
 	}
+	r.EchoScope(c.ErrOrStderr(), arg)
 
 	entity, err := fileEntity[E](c)
 	if err != nil {
@@ -239,6 +242,7 @@ func RunEdit[E proto.Message](c *cobra.Command, svc *Crud[E], r Resolver, collec
 	if err != nil {
 		return err
 	}
+	r.EchoScope(c.ErrOrStderr(), arg)
 
 	current, err := svc.GetEntity(c.Context(), name)
 	if err != nil {
@@ -271,6 +275,7 @@ func RunEditReplace[E proto.Message](c *cobra.Command, svc *Crud[E], r Resolver,
 	if err != nil {
 		return err
 	}
+	r.EchoScope(c.ErrOrStderr(), arg)
 
 	current, err := svc.GetEntity(c.Context(), name)
 	if err != nil {
@@ -302,6 +307,7 @@ func RunDelete(c *cobra.Command, svc DeleteService, r Resolver, collection, arg 
 	if err != nil {
 		return err
 	}
+	r.EchoScope(c.ErrOrStderr(), arg)
 
 	key, err := svc.Delete(c.Context(), DeleteParams{Name: name})
 	if err != nil {
@@ -322,6 +328,7 @@ func RunAssociate(c *cobra.Command, svc AssociateService, r Resolver, collection
 	if err != nil {
 		return err
 	}
+	r.EchoScope(c.ErrOrStderr(), args[0])
 
 	// A target resolves the way the entity does: a bare id composes into a
 	// full name under the same scope, and a full name is checked against

@@ -53,8 +53,34 @@ markers:
   and `-o json|yaml` are unaffected. Tables never truncate the `name` or
   `id` column: a cut-off identifier addresses nothing.
 - **Scope** contributes one flag per parent collection
-  (`NewScope("tenants")` → `--tenant-id`), resolved against the active
-  named context when omitted.
+  (`NewScope("tenants")` → `--tenant-id`). When the flag is absent the
+  value comes from the group's **context** in the selected profile, if the
+  spec declares one (below), and is otherwise an error naming the flag.
+- **Groups and contexts** (`Spec.Groups`). A profile
+  (`pkg/cmd.ProfileFile`, `config profiles ...` via `NewProfilesCommand`)
+  holds the consumer's settings — endpoints and the like, declared as
+  `ProfileField`s — and one context per namespace: the scope identifier
+  defaults its group's verbs fall back to. One profile is active;
+  `Deps.BindProfileFlag` adds `--profile` and its env variable for a single
+  call. A group declares which levels it stores, or shares another group's
+  namespace when both walk one scope tree:
+
+  ```go
+  Groups: []cmd.Group{
+      {Name: "identity", Context: []string{"tenant", "issuer", "realm", "audience"}},
+      {Name: "access", SharesContext: "identity"},
+      {Name: "guard", Context: []string{"tenant", "network"}},
+  },
+  ```
+
+  Each such group gets a generated `<group> context set|show|clear` whose
+  flags are exactly those levels (`--tenant`, `--issuer`, ...), so a
+  misspelled level is a cobra error. A group with no declaration reads no
+  context. Generation panics when a level is no scope level of the group's
+  entries, or `SharesContext` names a group without a `Context`. A write
+  verb whose scope took a value from the context prints one line to stderr
+  when stderr is a terminal (`scope from profile test01: tenant t-1`);
+  reads stay quiet.
 - **Generated names** — the `<entity>_cmd_gen.go` file and its Go
   identifiers (`New<Entity>Command`, `<entity>FlagFields`, ...) — stem from
   the pb message name. Every entry emits into one package, so two entries

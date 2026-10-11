@@ -87,6 +87,94 @@ func TestRegistry_Generate(t *testing.T) {
 				assert.PanicsWithValue(t, `Pet: Resource.Name "vet-pet" must be an exported Go identifier`, run)
 			},
 		},
+		"a Group context emits the context verb and a namespaced resolver": {
+			arrange: func() *cmd.Spec {
+				spec := greetSpec()
+				spec.Entries = []gentf.Entry{petIn("store", ""), petIn("vet", "VetPet")}
+				spec.Groups = []cmd.Group{
+					{Name: "store", Context: []string{"store"}},
+					{Name: "vet", SharesContext: "store"},
+				}
+				return spec
+			},
+			assert: func(t *testing.T, dir string, run func()) {
+				run()
+				index, err := os.ReadFile(filepath.Join(dir, "index_cmd_gen.go"))
+				require.NoError(t, err)
+				assert.Contains(t, string(index), "Namespace: \"store\",\n\t}))")
+				assert.Contains(t, string(index), "SharedWith: \"store\",")
+				vet, err := os.ReadFile(filepath.Join(dir, "vet_pet_cmd_gen.go"))
+				require.NoError(t, err)
+				// The sharing group reads the owner's namespace, and its
+				// error points at its own (alias) verb.
+				assert.Contains(t, string(vet), `Namespace:  "store",`)
+				assert.Contains(t, string(vet), `SetCommand: "greet vet context set",`)
+			},
+		},
+		"a group without a Group declaration reads no context": {
+			arrange: func() *cmd.Spec {
+				spec := greetSpec()
+				spec.Entries = []gentf.Entry{petIn("store", "")}
+				return spec
+			},
+			assert: func(t *testing.T, dir string, run func()) {
+				run()
+				pet, err := os.ReadFile(filepath.Join(dir, "pet_cmd_gen.go"))
+				require.NoError(t, err)
+				assert.NotContains(t, string(pet), "Namespace")
+				assert.Contains(t, string(pet), `"store_id scope identifier")`)
+				index, err := os.ReadFile(filepath.Join(dir, "index_cmd_gen.go"))
+				require.NoError(t, err)
+				assert.NotContains(t, string(index), "NewContextCommand")
+			},
+		},
+		"a Context level no entry of the group has panics": {
+			arrange: func() *cmd.Spec {
+				spec := greetSpec()
+				spec.Entries = []gentf.Entry{petIn("store", "")}
+				spec.Groups = []cmd.Group{{Name: "store", Context: []string{"store", "aisle"}}}
+				return spec
+			},
+			assert: func(t *testing.T, _ string, run func()) {
+				assert.PanicsWithValue(t, `cmdinfra: Group "store": Context level "aisle" is no scope level of a store entry`, run)
+			},
+		},
+		"SharesContext naming an unknown group panics": {
+			arrange: func() *cmd.Spec {
+				spec := greetSpec()
+				spec.Entries = []gentf.Entry{petIn("store", "")}
+				spec.Groups = []cmd.Group{{Name: "store", SharesContext: "identity"}}
+				return spec
+			},
+			assert: func(t *testing.T, _ string, run func()) {
+				assert.PanicsWithValue(t, `cmdinfra: Group "store": SharesContext names "identity", which declares no Context`, run)
+			},
+		},
+		"a Group no entry belongs to panics": {
+			arrange: func() *cmd.Spec {
+				spec := greetSpec()
+				spec.Entries = []gentf.Entry{petIn("store", "")}
+				spec.Groups = []cmd.Group{{Name: "stroe", Context: []string{"store"}}}
+				return spec
+			},
+			assert: func(t *testing.T, _ string, run func()) {
+				assert.PanicsWithValue(t, `cmdinfra: Group "stroe": no entry declares Resource.Group "stroe"`, run)
+			},
+		},
+		"Context and SharesContext together panic": {
+			arrange: func() *cmd.Spec {
+				spec := greetSpec()
+				spec.Entries = []gentf.Entry{petIn("store", ""), petIn("vet", "VetPet")}
+				spec.Groups = []cmd.Group{
+					{Name: "store", Context: []string{"store"}},
+					{Name: "vet", Context: []string{"store"}, SharesContext: "store"},
+				}
+				return spec
+			},
+			assert: func(t *testing.T, _ string, run func()) {
+				assert.PanicsWithValue(t, `cmdinfra: Group "vet": Context and SharesContext are exclusive`, run)
+			},
+		},
 		"greet spec regenerates the golden byte-identically": {
 			arrange: greetSpec,
 			assert: func(t *testing.T, dir string, run func()) {

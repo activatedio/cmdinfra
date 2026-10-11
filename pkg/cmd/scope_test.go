@@ -1,7 +1,7 @@
 package cmd_test
 
 import (
-	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/activatedio/tfinfra/pkg/aip"
@@ -89,7 +89,33 @@ func TestResolver(t *testing.T) {
 				_, err := r.Parent()
 				require.ErrorContains(t, err, "missing issuer_id, audience_id")
 				require.ErrorContains(t, err, "--issuer-id, --audience-id")
-				require.ErrorContains(t, err, "active context")
+				assert.NotContains(t, err.Error(), "context set")
+			},
+		},
+		"missing identifiers name the context set when there is one": {
+			arrange: func() cmd.Resolver {
+				return cmd.Resolver{
+					Scope:      threeLevel,
+					Defaults:   map[string]string{"tenant_id": "t-1"},
+					SetCommand: "awctl access context set",
+				}
+			},
+			assert: func(t *testing.T, r cmd.Resolver) {
+				_, err := r.Parent()
+				require.EqualError(t, err, "missing issuer_id, audience_id: pass --issuer-id, --audience-id, "+
+					"or store it in the profile with `awctl access context set --issuer <id> --audience <id>`")
+			},
+		},
+		"defaulted lists the context-supplied identifiers in scope order": {
+			arrange: func() cmd.Resolver {
+				return cmd.Resolver{
+					Scope:    threeLevel,
+					Explicit: map[string]string{"issuer_id": "i-2"},
+					Defaults: map[string]string{"tenant_id": "t-1", "issuer_id": "i-1", "audience_id": "a-1"},
+				}
+			},
+			assert: func(t *testing.T, r cmd.Resolver) {
+				assert.Equal(t, []string{"tenant_id", "audience_id"}, r.Defaulted())
 			},
 		},
 		"top-level scope resolves an empty parent": {
@@ -114,29 +140,54 @@ func TestResolver(t *testing.T) {
 	}
 }
 
-func TestContextStore_RoundTrip(t *testing.T) {
+func TestResolver_EchoScope(t *testing.T) {
 
-	store := cmd.ContextStore{Path: filepath.Join(t.TempDir(), "contexts.yaml")}
+	type s struct {
+		arrange func(r *cmd.Resolver) string
+		want    string
+	}
 
-	// A missing file loads as an empty document.
-	f, err := store.Load()
-	require.NoError(t, err)
-	assert.Empty(t, f.Names())
-	assert.Empty(t, f.ActiveValues())
+	cases := map[string]s{
+		"a context-supplied scope is named, levels without _id": {
+			arrange: func(*cmd.Resolver) string { return "u-1" },
+			want:    "scope from profile test01: tenant t-1, realm r-emp\n",
+		},
+		"off a terminal nothing prints": {
+			arrange: func(r *cmd.Resolver) string { r.Echo = false; return "u-1" },
+		},
+		"a full name brings its own scope": {
+			arrange: func(*cmd.Resolver) string { return "tenants/t-1/realms/r-emp/users/u-1" },
+		},
+		"flags for every level leave nothing to say": {
+			arrange: func(r *cmd.Resolver) string {
+				r.Explicit = map[string]string{"tenant_id": "t-1", "realm_id": "r-1"}
+				return ""
+			},
+		},
+		"only the defaulted levels are named": {
+			arrange: func(r *cmd.Resolver) string {
+				r.Explicit = map[string]string{"tenant_id": "t-2"}
+				return ""
+			},
+			want: "scope from profile test01: realm r-emp\n",
+		},
+	}
 
-	f.Set("dev", "tenant_id", "t-dev")
-	f.Set("dev", "issuer_id", "i-dev")
-	f.Set("prod", "tenant_id", "t-prod")
-	require.NoError(t, f.Activate("dev"))
-	require.NoError(t, store.Save(f))
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
 
-	loaded, err := store.Load()
-	require.NoError(t, err)
-	assert.Equal(t, []string{"dev", "prod"}, loaded.Names())
-	assert.Equal(t, "dev", loaded.Active)
-	assert.Equal(t, map[string]string{"tenant_id": "t-dev", "issuer_id": "i-dev"}, loaded.ActiveValues())
+			r := cmd.Resolver{
+				Scope:    aip.NewScope("tenants", "realms"),
+				Defaults: map[string]string{"tenant_id": "t-1", "realm_id": "r-emp"},
+				Profile:  "test01",
+				Echo:     true,
+			}
+			arg := tc.arrange(&r)
 
-	err = loaded.Activate("staging")
-	require.ErrorContains(t, err, `unknown context "staging"`)
-	require.ErrorContains(t, err, "dev, prod")
+			var b strings.Builder
+			r.EchoScope(&b, arg)
+
+			assert.Equal(t, tc.want, b.String())
+		})
+	}
 }

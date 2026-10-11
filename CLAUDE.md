@@ -20,6 +20,7 @@ genlib/           # build-time code generation (panics on error)
   cmd/
     types.go      # Spec{Package, Root, Entries []gentf.Entry}
     markers.go    # Resource, Columns, FieldFlags, Associate (pending), Search (pending)
+    group.go      # Group validation; a group's context namespace
     flags.go      # Flag + NormalizeFlags: tfinfra field normalization -> kebab flags
     verbs.go      # Verb + VerbsFor: Ops -> create/delete/describe/edit/list/update
     columns.go    # ColumnsFor: Columns marker validated, id+display_name default
@@ -36,8 +37,11 @@ pkg/              # runtime imported by generated code (returns errors)
     crud.go       # Crud[E]: generic CrudService over CrudClient[E] closures
     search.go     # Searcher[E]: SearchService over a Search closure
     associate.go  # Associator[T]: AssociateService over Associate/ListBy closures
-    scope.go      # Resolver: flag > context > error; short-id/full-name args
-    context.go    # ContextFile/ContextStore: named contexts (~/.awctl.yaml)
+    scope.go      # Resolver: flag > profile context > error; short-id/full-name args; scope echo
+    profile.go    # ProfileFile/ProfileStore: profiles (settings + per-namespace contexts)
+    deps.go       # Deps: clients, profile selection (--profile), Resolver builder
+    configcmd.go  # NewProfilesCommand: config profiles list/create/update/describe/activate/delete
+    context.go    # NewContextCommand: <group> context set/show/clear
     render.go     # table/yaml/json renderers, dotted paths, sensitive masking
     editor.go     # Edit[E]: $EDITOR patch-diff flow; FieldDiff update masks
 examples/greet    # end-to-end example; generated/ is the golden output contract
@@ -109,11 +113,16 @@ create/update via `DecodeEntity` yaml/json→protojson; List walks
 `next_page_token`), `Searcher[E]`, `Associator[T]` over
 `AssociationRequest{set, remove}` + `List*By*`. Records render via
 protojson (`UseProtoNames`, `EmitDefaultValues`). Tested against an
-in-process petstore gRPC service (real wire, real client). Context
-resolution — `Resolver` (explicit flag > active context > actionable
-error; positional args take a short ID or a validated full AIP name;
-`ParseBack` fills identifiers) and `ContextFile`/`ContextStore` (named
-contexts, the gcloud-configurations analog; 0600). Output + editor —
+in-process petstore gRPC service (real wire, real client). Profiles and
+contexts — `Resolver` (explicit flag > the selected profile's context in
+the group's namespace > actionable error naming the flag and the `context
+set`; positional args take a short ID or a validated full AIP name;
+`ParseBack` fills identifiers; `EchoScope` names the context-supplied scope
+on a terminal before a write), `ProfileFile`/`ProfileStore` (named
+profiles: consumer-declared settings plus one context per namespace; 0600),
+`NewProfilesCommand` (`config profiles ...`), and per-group generated
+`context set|show|clear` from `Spec.Groups` (`Group{Name, Context,
+SharesContext}`). Output + editor —
 table/yaml/json renderers (`NewRenderer`; dotted field paths; sensitive
 fields mask as ******** in tables, machine formats print everything for
 piping; the virtual `id` column derives the bare id from `name`, and
@@ -155,8 +164,9 @@ set/remove fields, Go names from protoc-gen-go tags) and emits an
 `Associator` factory plus `add-<noun>`/`remove-<noun>`/`list-<noun>`
 verbs. `examples/petstore` is the full golden CLI, acceptance-tested end
 to end (real cobra parsing, real gRPC wire, in-process fake): lifecycle,
-context-fallback list, actionable missing-scope error, masked describe,
-$EDITOR edit with a minimal patch mask, name + enum completion, and the
+profile-context list, profiles and `--profile` (no scope bleed across
+profiles), the terminal-only scope echo on writes, actionable
+missing-scope error, masked describe, $EDITOR edit with a minimal patch mask, name + enum completion, and the
 association add/list/remove flow.
 
 Pending (tracked in the awctl plan, gitlab project `authwise/awctl`):

@@ -19,7 +19,8 @@ import (
 type Resource struct {
 	// Scope is the resource's position in the AIP hierarchy; it contributes
 	// one scope flag per parent collection (e.g. "--tenant-id"), resolved
-	// against the active context when omitted.
+	// against the group's context in the selected profile when omitted
+	// (Spec.Groups).
 	Scope runtimetf.Scope
 	// Ops selects which operations the API exposes; the zero value means
 	// all (OpAll). Verbs derive from it — see VerbsFor.

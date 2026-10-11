@@ -85,21 +85,18 @@ func newPetService(client v1.PetStoreServiceClient) *cmd.Crud[*v1.Pet] {
 	})
 }
 func petResolver(c *cobra.Command, deps *cmd.Deps) (cmd.Resolver, error) {
-	defaults, err := deps.ContextValues()
-	if err != nil {
-		return cmd.Resolver{}, err
-	}
-	return cmd.Resolver{
-		Defaults: defaults,
+	return deps.Resolver(cmd.ResolverParams{
 		Explicit: map[string]string{"store_id": func() string {
 			v, _ := c.Flags().GetString("store-id")
 			return v
 		}()},
-		Scope: aip.NewScope("stores"),
-	}, nil
+		Namespace:  "petstore",
+		Scope:      aip.NewScope("stores"),
+		SetCommand: "petstore petstore context set",
+	})
 }
 func addPetScopeFlags(c *cobra.Command) {
-	c.Flags().String("store-id", "", "store_id scope identifier (falls back to the active context)")
+	c.Flags().String("store-id", "", "store_id scope identifier (falls back to the profile's context)")
 }
 func addPetFieldFlags(c *cobra.Command) {
 	c.Flags().String("display-name", "", "display_name")

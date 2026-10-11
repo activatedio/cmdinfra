@@ -1,112 +1,185 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 
-	"sigs.k8s.io/yaml"
+	"github.com/spf13/cobra"
 )
 
-// ContextFile is the named-contexts configuration document (the gcloud
-// configurations analog): named sets of scope identifier defaults plus the
-// active selection.
-type ContextFile struct {
-	Active   string                       `json:"active,omitempty"`
-	Contexts map[string]map[string]string `json:"contexts,omitempty"`
+// ContextParams describes one command group's `context` verb, emitted by the
+// generator from the spec's Group declarations.
+type ContextParams struct {
+	// Namespace is where the values are stored in the profile: the group's
+	// own name, or the group it shares a scope tree with.
+	Namespace string
+	// Levels are the storable scope levels, in scope order ("tenant",
+	// "issuer"). Each is a flag on set and clear, and is stored under its
+	// identifier attribute ("tenant_id").
+	Levels []string
+	// SharedWith names the group whose context this one is, when the group
+	// shares it; the help says so.
+	SharedWith string
 }
 
-// ActiveValues returns the active context's values, or an empty map when
-// nothing is active.
-func (f *ContextFile) ActiveValues() map[string]string {
-	if f == nil || f.Active == "" {
-		return map[string]string{}
+// NewContextCommand returns a group's `context` verb: set, show and clear
+// over the namespace in the selected profile.
+func NewContextCommand(deps *Deps, p ContextParams) *cobra.Command {
+
+	short := "Manage the " + p.Namespace + " context: scope defaults stored in the profile"
+	long := "The context holds the scope this group's commands fall back to when a --<level>-id\n" +
+		"flag is absent. It lives in the profile, so switching profile switches it too;\n" +
+		"--profile reads and writes another profile's."
+	if p.SharedWith != "" {
+		short = "Alias of `" + p.SharedWith + " context`: the two groups share one scope tree"
+		long = short + ". Setting it here sets it there.\n\n" + long
 	}
-	values, ok := f.Contexts[f.Active]
-	if !ok {
-		return map[string]string{}
-	}
-	return values
+
+	c := &cobra.Command{Use: "context", Short: short, Long: long}
+	c.AddCommand(
+		newContextSetCommand(deps, p),
+		newContextShowCommand(deps, p),
+		newContextClearCommand(deps, p),
+	)
+	return c
 }
 
-// Set stores a value in the named context, creating the context if needed.
-func (f *ContextFile) Set(context, key, value string) {
-	if f.Contexts == nil {
-		f.Contexts = map[string]map[string]string{}
-	}
-	if f.Contexts[context] == nil {
-		f.Contexts[context] = map[string]string{}
-	}
-	f.Contexts[context][key] = value
+func levelFlag(level string) string {
+	return strings.ReplaceAll(level, "_", "-")
 }
 
-// Activate selects the named context; unknown names are errors listing the
-// known ones.
-func (f *ContextFile) Activate(name string) error {
-	if _, ok := f.Contexts[name]; !ok {
-		known := f.Names()
-		if len(known) == 0 {
-			return fmt.Errorf("unknown context %q: no contexts are defined", name)
-		}
-		return fmt.Errorf("unknown context %q: known contexts are %s", name, strings.Join(known, ", "))
+func newContextSetCommand(deps *Deps, p ContextParams) *cobra.Command {
+
+	c := &cobra.Command{
+		Use:   "set",
+		Short: "Store scope defaults (one flag per level)",
+		Long: "Store scope defaults in the profile. Levels not named are left as they are:\n" +
+			"setting --" + levelFlag(p.Levels[0]) + " does not clear the levels below it, so check show after\n" +
+			"switching.",
+		Args: cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			return updateContext(c, deps, p, func(prof *Profile) error {
+				set := false
+				for _, level := range p.Levels {
+					if !c.Flags().Changed(levelFlag(level)) {
+						continue
+					}
+					v, _ := c.Flags().GetString(levelFlag(level))
+					if v == "" || strings.Contains(v, "/") {
+						return fmt.Errorf("--%s takes a bare id, not %q", levelFlag(level), v)
+					}
+					prof.SetContext(p.Namespace, level+"_id", v)
+					set = true
+				}
+				if !set {
+					return errors.New("nothing to set: pass at least one of " + flagList(p.Levels))
+				}
+				return nil
+			})
+		},
 	}
-	f.Active = name
-	return nil
+	for _, level := range p.Levels {
+		c.Flags().String(levelFlag(level), "", level+" id to store")
+	}
+	return c
 }
 
-// Names returns the defined context names, sorted.
-func (f *ContextFile) Names() []string {
-	names := make([]string, 0, len(f.Contexts))
-	for name := range f.Contexts {
-		names = append(names, name)
+func newContextShowCommand(deps *Deps, p ContextParams) *cobra.Command {
+	return &cobra.Command{
+		Use:   "show",
+		Short: "Show the stored scope defaults",
+		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+
+			name, prof, err := deps.SelectedProfile()
+			if err != nil {
+				return err
+			}
+			if prof == nil {
+				return errNoProfile(c)
+			}
+
+			values := prof.Context(p.Namespace)
+			out := c.OutOrStdout()
+			if len(values) == 0 {
+				_, err := fmt.Fprintf(out, "No %s context in profile %s.\n", p.Namespace, name)
+				return err
+			}
+
+			width := 0
+			for _, level := range p.Levels {
+				width = max(width, len(level))
+			}
+			if _, err := fmt.Fprintf(out, "profile %s, %s context:\n", name, p.Namespace); err != nil {
+				return err
+			}
+			for _, level := range p.Levels {
+				if v := values[level+"_id"]; v != "" {
+					if _, err := fmt.Fprintf(out, "  %-*s  %s\n", width, level, v); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		},
 	}
-	sort.Strings(names)
-	return names
 }
 
-// ContextStore loads and saves the context file.
-type ContextStore struct {
-	// Path is the file location, e.g. HomeContextPath(".awctl.yaml").
-	Path string
+func newContextClearCommand(deps *Deps, p ContextParams) *cobra.Command {
+
+	c := &cobra.Command{
+		Use:   "clear",
+		Short: "Clear the named levels, or the whole context with no flags",
+		Args:  cobra.NoArgs,
+		RunE: func(c *cobra.Command, _ []string) error {
+			return updateContext(c, deps, p, func(prof *Profile) error {
+				var attrs []string
+				for _, level := range p.Levels {
+					if on, _ := c.Flags().GetBool(levelFlag(level)); on {
+						attrs = append(attrs, level+"_id")
+					}
+				}
+				prof.ClearContext(p.Namespace, attrs...)
+				return nil
+			})
+		},
+	}
+	for _, level := range p.Levels {
+		c.Flags().Bool(levelFlag(level), false, "clear the stored "+level)
+	}
+	return c
 }
 
-// HomeContextPath returns the given filename under the user's home
-// directory.
-func HomeContextPath(filename string) (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, filename), nil
-}
+// updateContext loads the selected profile, applies change, and saves.
+func updateContext(c *cobra.Command, deps *Deps, p ContextParams, change func(*Profile) error) error {
 
-// Load reads the context file; a missing file is an empty document.
-func (s ContextStore) Load() (*ContextFile, error) {
-
-	data, err := os.ReadFile(s.Path)
-	if os.IsNotExist(err) {
-		return &ContextFile{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	f := &ContextFile{}
-	if err := yaml.Unmarshal(data, f); err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", s.Path, err)
-	}
-	return f, nil
-}
-
-// Save writes the context file (owner read/write only — it names tenants
-// and issuers, and siblings may hold credentials).
-func (s ContextStore) Save(f *ContextFile) error {
-
-	data, err := yaml.Marshal(f)
+	f, err := deps.Profiles.Load()
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.Path, data, 0o600)
+	name, prof, err := f.Select(deps.Profile)
+	if err != nil {
+		return err
+	}
+	if prof == nil {
+		return errNoProfile(c)
+	}
+
+	if err := change(prof); err != nil {
+		return err
+	}
+	if err := deps.Profiles.Save(f); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(c.OutOrStdout(), "Updated the %s context in profile %s\n", p.Namespace, name)
+	return err
+}
+
+func flagList(levels []string) string {
+	flags := make([]string, len(levels))
+	for i, l := range levels {
+		flags[i] = "--" + levelFlag(l)
+	}
+	return strings.Join(flags, ", ")
 }

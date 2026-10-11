@@ -1,5 +1,5 @@
 // The petstore example CLI: the generated command surface wired to a real
-// gRPC client, the named-context store, and the config command group.
+// gRPC client, the profile store, and the config command group.
 package main
 
 import (
@@ -20,32 +20,38 @@ func main() {
 
 func run() int {
 
-	contextPath, err := pkgcmd.HomeContextPath(".petstore.yaml")
+	profilePath, err := pkgcmd.HomePath(".petstore.d", "config.yaml")
 	if err != nil {
 		return 1
 	}
 
-	deps := &pkgcmd.Deps{
-		Clients: map[string]func(ctx context.Context) (any, error){
-			"petstore": func(context.Context) (any, error) {
-				conn, err := grpc.NewClient(
-					os.Getenv("PETSTORE_ENDPOINT"),
-					grpc.WithTransportCredentials(insecure.NewCredentials()),
-				)
-				if err != nil {
+	deps := &pkgcmd.Deps{Profiles: pkgcmd.ProfileStore{Path: profilePath}}
+	deps.Clients = map[string]func(ctx context.Context) (any, error){
+		"petstore": func(context.Context) (any, error) {
+			// The env variable wins over the profile, so a one-off call
+			// needs no profile at all.
+			endpoint := os.Getenv("PETSTORE_ENDPOINT")
+			if endpoint == "" {
+				if endpoint, err = deps.Setting("endpoint"); err != nil {
 					return nil, err
 				}
-				return petstorev1.NewPetStoreServiceClient(conn), nil
-			},
+			}
+			conn, err := grpc.NewClient(endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+			if err != nil {
+				return nil, err
+			}
+			return petstorev1.NewPetStoreServiceClient(conn), nil
 		},
-		Contexts: pkgcmd.ContextStore{Path: contextPath},
 	}
 
 	root := generated.NewRootCommand()
+	deps.BindProfileFlag(root, "PETSTORE_PROFILE")
 	for _, c := range generated.Commands(deps) {
 		root.AddCommand(c)
 	}
-	root.AddCommand(pkgcmd.NewConfigCommand(deps.Contexts))
+	root.AddCommand(pkgcmd.NewProfilesCommand(deps, []pkgcmd.ProfileField{
+		{Key: "endpoint", Usage: "the petstore API, host:port"},
+	}))
 
 	return pkgcmd.Execute(context.Background(), root)
 }

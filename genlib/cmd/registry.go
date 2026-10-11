@@ -63,6 +63,7 @@ func specDirectoryHandler(dirPath string, r gen.Registry, entry any) {
 		validateEntry(e)
 	}
 	validateIdentNames(spec)
+	validateGroups(spec)
 
 	for _, e := range spec.Entries {
 		res, _ := gentf.GetImplementation[Resource](e)
@@ -138,7 +139,8 @@ func entityFileMainHandler(f *jen.File, _ gen.Registry, entry any) {
 }
 
 // writeCommandIndex emits Commands(deps): the service command groups
-// (sorted) with their resource groups attached in spec order.
+// (sorted) with their resource groups attached in spec order, then the
+// group's context verb when it declares or shares one.
 func writeCommandIndex(f *jen.File, spec *Spec) {
 
 	groups := map[string][]string{}
@@ -166,6 +168,22 @@ func writeCommandIndex(f *jen.File, spec *Spec) {
 		for _, entity := range groups[group] {
 			stmts = append(stmts, jen.Id(id).Dot("AddCommand").Call(
 				jen.Id("New"+entity+"Command").Call(jen.Id("deps")),
+			))
+		}
+		if gc := contextFor(spec, group); gc.Namespace != "" {
+			levels := make([]jen.Code, len(gc.Levels))
+			for i, l := range gc.Levels {
+				levels[i] = jen.Lit(l)
+			}
+			params := jen.Dict{
+				jen.Id("Namespace"): jen.Lit(gc.Namespace),
+				jen.Id("Levels"):    jen.Index().String().Values(levels...),
+			}
+			if gc.SharedWith != "" {
+				params[jen.Id("SharedWith")] = jen.Lit(gc.SharedWith)
+			}
+			stmts = append(stmts, jen.Id(id).Dot("AddCommand").Call(
+				jen.Qual(cmdPkg, "NewContextCommand").Call(jen.Id("deps"), jen.Qual(cmdPkg, "ContextParams").Values(params)),
 			))
 		}
 		returns = append(returns, jen.Id(id))

@@ -15,5 +15,9 @@ func Commands(deps *cmd.Deps) []*cobra.Command {
 	}
 	group0.AddCommand(NewPetCommand(deps))
 	group0.AddCommand(NewToyCommand(deps))
+	group0.AddCommand(cmd.NewContextCommand(deps, cmd.ContextParams{
+		Levels:    []string{"store"},
+		Namespace: "petstore",
+	}))
 	return []*cobra.Command{group0}
 }

@@ -203,6 +203,11 @@ func (f *fakePetStore) ListToysByPet(_ context.Context, in *petstorev1.ListToysB
 type harness struct {
 	fake *fakePetStore
 	deps *pkgcmd.Deps
+	// terminal stands in for stderr being a terminal, which is when a write
+	// echoes the scope it took from the context.
+	terminal bool
+	// stderr is what the last run wrote there.
+	stderr string
 }
 
 func newHarness(t *testing.T) *harness {
@@ -228,14 +233,16 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(func() { _ = conn.Close() })
 	client := petstorev1.NewPetStoreServiceClient(conn)
 
-	deps := &pkgcmd.Deps{
+	h := &harness{fake: fake}
+	h.deps = &pkgcmd.Deps{
 		Clients: map[string]func(ctx context.Context) (any, error){
 			"petstore": func(context.Context) (any, error) { return client, nil },
 		},
-		Contexts: pkgcmd.ContextStore{Path: filepath.Join(t.TempDir(), "contexts.yaml")},
+		Profiles: pkgcmd.ProfileStore{Path: filepath.Join(t.TempDir(), "petstore.d", "config.yaml")},
+		Terminal: func() bool { return h.terminal },
 	}
 
-	return &harness{fake: fake, deps: deps}
+	return h
 }
 
 // run executes the CLI exactly as main wires it.
@@ -243,18 +250,27 @@ func (h *harness) run(t *testing.T, args ...string) (string, error) {
 
 	t.Helper()
 
+	// --profile binds into Deps; each run starts from the env default, as
+	// a fresh process would.
+	h.deps.Profile = ""
+
 	root := generated.NewRootCommand()
+	h.deps.BindProfileFlag(root, "PETSTORE_PROFILE")
 	for _, c := range generated.Commands(h.deps) {
 		root.AddCommand(c)
 	}
-	root.AddCommand(pkgcmd.NewConfigCommand(h.deps.Contexts))
+	root.AddCommand(pkgcmd.NewProfilesCommand(h.deps, []pkgcmd.ProfileField{
+		{Key: "endpoint", Usage: "the petstore API"},
+		{Key: "insecure", Usage: "plaintext", Bool: true},
+	}))
 
-	var out bytes.Buffer
+	var out, errOut bytes.Buffer
 	root.SetOut(&out)
-	root.SetErr(&out)
+	root.SetErr(&errOut)
 	root.SetArgs(args)
 
 	err := root.ExecuteContext(context.Background())
+	h.stderr = errOut.String()
 	return out.String(), err
 }
 
@@ -318,10 +334,10 @@ func TestCLI_ListPaginationAndContext(t *testing.T) {
 
 	h := newHarness(t)
 
-	// The active context supplies store_id — no --store-id flags below.
-	_, err := h.run(t, "config", "contexts", "set", "dev", "store_id", "s-1")
+	// The profile's context supplies store_id — no --store-id flags below.
+	_, err := h.run(t, "config", "profiles", "create", "dev")
 	require.NoError(t, err)
-	_, err = h.run(t, "config", "contexts", "activate", "dev")
+	_, err = h.run(t, "petstore", "context", "set", "--store", "s-1")
 	require.NoError(t, err)
 
 	for i := 0; i < 3; i++ {
@@ -348,6 +364,143 @@ func TestCLI_MissingScopeIsActionable(t *testing.T) {
 
 	require.ErrorContains(t, err, "missing store_id")
 	require.ErrorContains(t, err, "--store-id")
+	require.ErrorContains(t, err, "`petstore petstore context set --store <id>`")
+}
+
+// TestCLI_Profiles covers the two tiers: a profile is where (its settings)
+// and which (its contexts), one is active, and --profile picks another for
+// one call — taking its context with it.
+func TestCLI_Profiles(t *testing.T) {
+
+	h := newHarness(t)
+
+	// The first profile becomes active; the second waits to be activated.
+	out, err := h.run(t, "config", "profiles", "create", "dev", "--endpoint", "dev:443", "--insecure")
+	require.NoError(t, err)
+	assert.Equal(t, "Created dev (active)\n", out)
+	out, err = h.run(t, "config", "profiles", "create", "prod", "--endpoint", "prod:443")
+	require.NoError(t, err)
+	assert.Equal(t, "Created prod\n", out)
+	_, err = h.run(t, "config", "profiles", "create", "prod")
+	require.ErrorContains(t, err, `profile "prod" already exists`)
+
+	out, err = h.run(t, "config", "profiles", "list")
+	require.NoError(t, err)
+	assert.Equal(t, "* dev\n  prod\n", out)
+
+	// Each profile has its own context.
+	_, err = h.run(t, "petstore", "context", "set", "--store", "s-dev")
+	require.NoError(t, err)
+	_, err = h.run(t, "petstore", "context", "set")
+	require.ErrorContains(t, err, "nothing to set: pass at least one of --store")
+	_, err = h.run(t, "petstore", "context", "set", "--store", "stores/s-1")
+	require.ErrorContains(t, err, "takes a bare id")
+
+	out, err = h.run(t, "petstore", "context", "show")
+	require.NoError(t, err)
+	assert.Equal(t, "profile dev, petstore context:\n  store  s-dev\n", out)
+	out, err = h.run(t, "--profile", "prod", "petstore", "context", "show")
+	require.NoError(t, err)
+	assert.Equal(t, "No petstore context in profile prod.\n", out)
+
+	out, err = h.run(t, "config", "profiles", "describe")
+	require.NoError(t, err)
+	assert.Equal(t, "dev:\n  contexts:\n    petstore:\n      store_id: s-dev\n  endpoint: dev:443\n  insecure: \"true\"\n", out)
+
+	_, err = h.run(t, "petstore", "pets", "create", "--display-name", "Rex")
+	require.NoError(t, err)
+	assert.Contains(t, h.fake.pets, "stores/s-dev/pets/p-1")
+
+	// The other profile's context never leaks into a call against it:
+	// --profile switches the scope defaults with the profile.
+	_, err = h.run(t, "--profile", "prod", "petstore", "pets", "list")
+	require.ErrorContains(t, err, "missing store_id")
+	t.Setenv("PETSTORE_PROFILE", "prod")
+	_, err = h.run(t, "petstore", "pets", "list")
+	require.ErrorContains(t, err, "missing store_id")
+	t.Setenv("PETSTORE_PROFILE", "")
+	_, err = h.run(t, "--profile", "staging", "petstore", "pets", "list")
+	require.ErrorContains(t, err, `unknown profile "staging": known profiles are dev, prod`)
+
+	// update changes only what it is given; delete refuses the active one.
+	_, err = h.run(t, "config", "profiles", "update", "prod", "--endpoint", "prod2:443")
+	require.NoError(t, err)
+	out, err = h.run(t, "config", "profiles", "describe", "prod")
+	require.NoError(t, err)
+	assert.Equal(t, "prod:\n  endpoint: prod2:443\n", out)
+	_, err = h.run(t, "config", "profiles", "update", "prod")
+	require.ErrorContains(t, err, "nothing to update")
+	_, err = h.run(t, "config", "profiles", "delete", "dev")
+	require.ErrorContains(t, err, `profile "dev" is active`)
+	_, err = h.run(t, "config", "profiles", "activate", "prod")
+	require.NoError(t, err)
+	_, err = h.run(t, "config", "profiles", "delete", "dev")
+	require.NoError(t, err)
+	out, err = h.run(t, "config", "profiles", "list")
+	require.NoError(t, err)
+	assert.Equal(t, "* prod\n", out)
+
+	// clear with a flag clears that level; with none, the whole context.
+	_, err = h.run(t, "petstore", "context", "set", "--store", "s-prod")
+	require.NoError(t, err)
+	_, err = h.run(t, "petstore", "context", "clear", "--store")
+	require.NoError(t, err)
+	out, err = h.run(t, "petstore", "context", "show")
+	require.NoError(t, err)
+	assert.Equal(t, "No petstore context in profile prod.\n", out)
+}
+
+// TestCLI_ScopeEcho covers the line a write prints when its scope came from
+// the context: only on a terminal, only for writes, and not when a flag or a
+// full name supplied the scope.
+func TestCLI_ScopeEcho(t *testing.T) {
+
+	h := newHarness(t)
+
+	_, err := h.run(t, "config", "profiles", "create", "dev")
+	require.NoError(t, err)
+	_, err = h.run(t, "petstore", "context", "set", "--store", "s-1")
+	require.NoError(t, err)
+
+	// Off a terminal nothing is said.
+	_, err = h.run(t, "petstore", "pets", "create", "--display-name", "Rex")
+	require.NoError(t, err)
+	assert.Empty(t, h.stderr)
+
+	h.terminal = true
+	echo := "scope from profile dev: store s-1\n"
+
+	_, err = h.run(t, "petstore", "pets", "create", "--display-name", "Fido")
+	require.NoError(t, err)
+	assert.Equal(t, echo, h.stderr)
+
+	_, err = h.run(t, "petstore", "pets", "update", "p-1", "--display-name", "Lord Rex")
+	require.NoError(t, err)
+	assert.Equal(t, echo, h.stderr)
+
+	_, err = h.run(t, "petstore", "toys", "create", "ball")
+	require.NoError(t, err)
+	assert.Equal(t, echo, h.stderr)
+
+	// Reads stay quiet.
+	_, err = h.run(t, "petstore", "pets", "list")
+	require.NoError(t, err)
+	assert.Empty(t, h.stderr)
+	_, err = h.run(t, "petstore", "pets", "describe", "p-1")
+	require.NoError(t, err)
+	assert.Empty(t, h.stderr)
+
+	// A flag or a full name is the caller's own scope.
+	_, err = h.run(t, "petstore", "pets", "update", "p-1", "--store-id", "s-1", "--display-name", "Rex")
+	require.NoError(t, err)
+	assert.Empty(t, h.stderr)
+	_, err = h.run(t, "petstore", "pets", "delete", "stores/s-1/pets/p-2")
+	require.NoError(t, err)
+	assert.Empty(t, h.stderr)
+
+	_, err = h.run(t, "petstore", "pets", "add-toys", "p-1", "ball")
+	require.NoError(t, err)
+	assert.Equal(t, echo, h.stderr)
 }
 
 func TestCLI_MaskedField(t *testing.T) {

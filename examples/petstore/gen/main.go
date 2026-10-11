@@ -30,6 +30,9 @@ func main() {
 			Use:   service,
 			Short: "A cmdinfra-generated petstore CLI",
 		},
+		// Pets and toys live inside a store, and an operator works inside
+		// one store for a session: the store is the petstore context.
+		Groups: []gencmd.Group{{Name: service, Context: []string{"store"}}},
 		Entries: []gentf.Entry{
 			{
 				Type: reflect.TypeFor[petstorev1.Pet](),

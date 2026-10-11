@@ -81,8 +81,9 @@ func writeEntityCommand(f *jen.File, spec *Spec, e gentf.Entry, res Resource) {
 	writeGroupCommand(f, n, verbs, models)
 	writeClientFunc(f, n, res)
 	writeServiceFactory(f, n, cm, columns)
-	writeResolver(f, n, res)
-	writeScopeFlags(f, n, res)
+	gc := contextFor(spec, n.Group)
+	writeResolver(f, n, res, gc.Namespace, gc.setCommand(spec, n.Group))
+	writeScopeFlags(f, n, res, gc.Namespace != "")
 	writeFieldFlags(f, n, flags)
 
 	for _, v := range verbs {
@@ -253,8 +254,9 @@ func requestLiteral(op *gentf.ClientOp, fields jen.Dict) *jen.Statement {
 	return jen.Op("&").Qual(op.RequestType.PkgPath(), op.RequestType.Name()).Values(fields)
 }
 
-// writeResolver emits the flag/context resolver builder.
-func writeResolver(f *jen.File, n entityNames, res Resource) {
+// writeResolver emits the flag/context resolver builder over the group's
+// context namespace.
+func writeResolver(f *jen.File, n entityNames, res Resource, namespace, setCommand string) {
 
 	explicit := jen.Dict{}
 	for _, attr := range res.Scope.IdentifierAttributes() {
@@ -265,17 +267,20 @@ func writeResolver(f *jen.File, n entityNames, res Resource) {
 		).Call()
 	}
 
+	params := jen.Dict{
+		jen.Id("Scope"):    scopeLiteral(res),
+		jen.Id("Explicit"): jen.Map(jen.String()).String().Values(explicit),
+	}
+	if namespace != "" {
+		params[jen.Id("Namespace")] = jen.Lit(namespace)
+		params[jen.Id("SetCommand")] = jen.Lit(setCommand)
+	}
+
 	f.Func().Id(n.Lower+"Resolver").
 		Params(jen.Id("c").Op("*").Qual(cobraPkg, "Command"), jen.Id("deps").Op("*").Qual(cmdPkg, "Deps")).
 		Params(jen.Qual(cmdPkg, "Resolver"), jen.Error()).
 		Block(
-			jen.List(jen.Id("defaults"), jen.Err()).Op(":=").Id("deps").Dot("ContextValues").Call(),
-			jen.If(jen.Err().Op("!=").Nil()).Block(jen.Return(jen.Qual(cmdPkg, "Resolver").Values(), jen.Err())),
-			jen.Return(jen.Qual(cmdPkg, "Resolver").Values(jen.Dict{
-				jen.Id("Scope"):    scopeLiteral(res),
-				jen.Id("Explicit"): jen.Map(jen.String()).String().Values(explicit),
-				jen.Id("Defaults"): jen.Id("defaults"),
-			}), jen.Nil()),
+			jen.Return(jen.Id("deps").Dot("Resolver").Call(jen.Qual(cmdPkg, "ResolverParams").Values(params))),
 		)
 }
 
@@ -291,13 +296,18 @@ func scopeLiteral(res Resource) *jen.Statement {
 }
 
 // writeScopeFlags emits the scope identifier flags.
-func writeScopeFlags(f *jen.File, n entityNames, res Resource) {
+func writeScopeFlags(f *jen.File, n entityNames, res Resource, fallback bool) {
+
+	usage := " scope identifier"
+	if fallback {
+		usage += " (falls back to the profile's context)"
+	}
 
 	stmts := make([]jen.Code, 0, len(res.Scope.IdentifierAttributes()))
 	for _, attr := range res.Scope.IdentifierAttributes() {
 		flag := strings.ReplaceAll(attr, "_", "-")
 		stmts = append(stmts, jen.Id("c").Dot("Flags").Call().Dot("String").Call(
-			jen.Lit(flag), jen.Lit(""), jen.Lit(attr+" scope identifier (falls back to the active context)"),
+			jen.Lit(flag), jen.Lit(""), jen.Lit(attr+usage),
 		))
 	}
 
