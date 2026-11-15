@@ -480,20 +480,42 @@ func verbUse(v Verb, n entityNames) string {
 	}
 }
 
+// withArticle puts "a" or "an" before a noun phrase by its first sound:
+// an application, an issuer, an access role, but a user, a unique key.
+func withArticle(noun string) string {
+
+	lower := strings.ToLower(noun)
+	switch {
+	case lower == "":
+		return noun
+	case strings.HasPrefix(lower, "u"):
+		for _, p := range []string{"us", "uni", "uti", "ur"} {
+			if strings.HasPrefix(lower, p) {
+				return "a " + noun
+			}
+		}
+		return "an " + noun
+	case strings.ContainsRune("aeio", rune(lower[0])):
+		return "an " + noun
+	default:
+		return "a " + noun
+	}
+}
+
 func verbShort(v Verb, n entityNames) string {
 	switch v.Name {
 	case verbCreate:
-		return "Create a " + n.Human
+		return "Create " + withArticle(n.Human)
 	case "delete":
-		return "Delete a " + n.Human
+		return "Delete " + withArticle(n.Human)
 	case "describe":
-		return "Describe a " + n.Human
+		return "Describe " + withArticle(n.Human)
 	case "edit":
-		return "Edit a " + n.Human + " in $EDITOR (field-mask patch)"
+		return "Edit " + withArticle(n.Human) + " in $EDITOR (field-mask patch)"
 	case "list":
 		return "List " + strings.ReplaceAll(n.PluralCmd, "-", " ")
 	case "update":
-		return "Update a " + n.Human
+		return "Update " + withArticle(n.Human)
 	default:
 		return snakeToTitle(v.Name) + " " + n.Human
 	}
