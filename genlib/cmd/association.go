@@ -291,19 +291,19 @@ func writeAssociationVerb(f *jen.File, n entityNames, am associationModel, facto
 
 	switch verb {
 	case verbAdd:
-		short = "Add " + nounHuman + " to a " + n.Human
+		short = "Add " + nounHuman + " to " + withArticle(n.Human)
 		args = jen.Qual(cobraPkg, "MinimumNArgs").Call(jen.Lit(2))
 		run = jen.Return(jen.Qual(cmdPkg, "RunAssociate").Call(
 			jen.Id("cc"), jen.Id(factory).Call(jen.Id("client")), jen.Id("r"),
 			jen.Lit(n.Collection), jen.Lit(am.TargetCollection), jen.Id("args"), jen.False()))
 	case verbRemove:
-		short = "Remove " + nounHuman + " from a " + n.Human
+		short = "Remove " + nounHuman + " from " + withArticle(n.Human)
 		args = jen.Qual(cobraPkg, "MinimumNArgs").Call(jen.Lit(2))
 		run = jen.Return(jen.Qual(cmdPkg, "RunAssociate").Call(
 			jen.Id("cc"), jen.Id(factory).Call(jen.Id("client")), jen.Id("r"),
 			jen.Lit(n.Collection), jen.Lit(am.TargetCollection), jen.Id("args"), jen.True()))
 	default:
-		short = "List a " + n.Human + "'s " + nounHuman
+		short = "List " + withArticle(n.Human) + "'s " + nounHuman
 		args = jen.Qual(cobraPkg, "ExactArgs").Call(jen.Lit(1))
 		run = jen.Return(jen.Qual(cmdPkg, "RunListAssociated").Call(
 			jen.Id("cc"), jen.Id(factory).Call(jen.Id("client")), jen.Id("r"),
