@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -14,6 +15,24 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"sigs.k8s.io/yaml"
 )
+
+// lastEqualsFields are the map fields whose pairs split on their last '='.
+var lastEqualsFields sync.Map // protoreflect.FullName -> struct{}
+
+// SplitMapOnLastEquals makes the named map<string, string> field's k=v pairs
+// split on their last '=' instead of their first, for a field whose keys may
+// carry '=' and whose values never do (an attribute match such as
+// attribute:<name>=<value> mapped to a level). Every other map field keeps
+// the first-'=' split. Call it before the command runs, typically while
+// wiring the command tree.
+func SplitMapOnLastEquals(field protoreflect.FullName) {
+	lastEqualsFields.Store(field, struct{}{})
+}
+
+func splitsOnLastEquals(fd protoreflect.FieldDescriptor) bool {
+	_, ok := lastEqualsFields.Load(fd.FullName())
+	return ok
+}
 
 var recordMarshaller = protojson.MarshalOptions{
 	UseProtoNames:     true,
@@ -71,7 +90,8 @@ func DecodeEntity[E proto.Message](data []byte) (E, error) {
 // by proto field name (snake_case, the flag-derivation input). Value
 // formats: scalars parse naturally; enums take a value name; timestamps
 // take RFC 3339; repeated strings take a comma-separated list;
-// map<string, string> takes comma-separated k=v pairs; message-typed
+// map<string, string> takes comma-separated k=v pairs, split on the first
+// '=' (on the last for a field named to SplitMapOnLastEquals); message-typed
 // fields (Any, Struct, concrete messages) take protojson. Unknown fields
 // and unparseable values are errors naming the field.
 func ApplyRecord(m proto.Message, rec StringsRecord) error {
@@ -104,7 +124,8 @@ func applyField(ref protoreflect.Message, fd protoreflect.FieldDescriptor, value
 }
 
 // applyMapField replaces a map<string, string> field from comma-separated
-// k=v pairs.
+// k=v pairs, each split on its first '=', or its last for a field named to
+// SplitMapOnLastEquals.
 func applyMapField(ref protoreflect.Message, fd protoreflect.FieldDescriptor, value string) error {
 
 	if fd.MapKey().Kind() != protoreflect.StringKind || fd.MapValue().Kind() != protoreflect.StringKind {
@@ -116,12 +137,17 @@ func applyMapField(ref protoreflect.Message, fd protoreflect.FieldDescriptor, va
 		return nil
 	}
 
+	last := splitsOnLastEquals(fd)
 	mp := ref.Mutable(fd).Map()
 	for _, pair := range strings.Split(value, ",") {
-		k, v, ok := strings.Cut(pair, "=")
-		if !ok {
+		i := strings.Index(pair, "=")
+		if last {
+			i = strings.LastIndex(pair, "=")
+		}
+		if i < 0 {
 			return fmt.Errorf("map entry %q is not key=value", pair)
 		}
+		k, v := pair[:i], pair[i+1:]
 		mp.Set(protoreflect.ValueOfString(k).MapKey(), protoreflect.ValueOfString(v))
 	}
 	return nil

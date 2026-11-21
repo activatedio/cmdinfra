@@ -11,6 +11,28 @@ import (
 	"github.com/activatedio/cmdinfra/pkg/cmd"
 )
 
+// TestApplyRecord_MapSplit: a map pair splits on its first '=' unless the
+// field is named to SplitMapOnLastEquals, which splits on its last.
+func TestApplyRecord_MapSplit(t *testing.T) {
+
+	labels := (&petstorev1.Pet{}).ProtoReflect().Descriptor().Fields().ByName("labels").FullName()
+	rec := cmd.StringsRecord{"labels": "attribute:a=b=lvl,team=core"}
+
+	first := &petstorev1.Pet{}
+	require.NoError(t, cmd.ApplyRecord(first, rec))
+	assert.Equal(t, map[string]string{"attribute:a": "b=lvl", "team": "core"}, first.GetLabels(), "the default is the first '='")
+
+	cmd.SplitMapOnLastEquals(labels)
+	t.Cleanup(func() { cmd.ForgetMapSplit(labels) })
+
+	last := &petstorev1.Pet{}
+	require.NoError(t, cmd.ApplyRecord(last, rec))
+	assert.Equal(t, map[string]string{"attribute:a=b": "lvl", "team": "core"}, last.GetLabels())
+
+	require.ErrorContains(t, cmd.ApplyRecord(&petstorev1.Pet{}, cmd.StringsRecord{"labels": "team"}),
+		`map entry "team" is not key=value`, "a pair with no '=' is refused in either mode")
+}
+
 func TestApplyRecord(t *testing.T) {
 
 	type s struct {
